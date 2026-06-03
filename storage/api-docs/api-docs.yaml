@@ -1,0 +1,1415 @@
+openapi: 3.0.3
+info:
+  title: Gym Management API
+  version: 1.0.0
+  description: |
+    REST API untuk aplikasi manajemen gym.
+
+    **Base URL:** `/v1`
+
+    **Autentikasi:** JWT Bearer token pada header `Authorization: Bearer {access_token}`
+
+    **Format response:** `{ "success": true, "message": "OK", "data": {} }`
+  contact:
+    name: Gym Management API
+servers:
+  - url: http://localhost:8000/v1
+    description: Development
+tags:
+  - name: Auth
+    description: Registrasi, login, OTP, profil
+  - name: Membership
+    description: Paket dan membership member
+  - name: Attendance
+    description: Face check-in member
+  - name: Trainer
+    description: Daftar trainer dan booking
+  - name: Booking
+    description: Riwayat booking member
+  - name: Workout
+    description: Rencana dan log latihan
+  - name: Progress
+    description: Berat badan dan chart progress
+  - name: Notification
+    description: Notifikasi member
+  - name: Chat
+    description: Chat member
+  - name: Feedback
+    description: Feedback member
+  - name: FAQ
+    description: Pertanyaan umum (publik)
+  - name: Admin - Membership
+  - name: Admin - Members
+  - name: Admin - Packages
+  - name: Admin - Attendance
+  - name: Admin - Trainers
+  - name: Admin - Dashboard
+  - name: Admin - Reports
+  - name: Admin - Notifications
+  - name: Admin - Chat
+  - name: Admin - Feedback
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrasi member baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, phone, password, password_confirmation]
+              properties:
+                name: { type: string, maxLength: 255 }
+                email: { type: string, format: email }
+                phone: { type: string, example: "081234567890", description: "Format 08xxxxxxxx" }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login dengan email atau nomor HP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: "Email atau nomor HP" }
+                password: { type: string }
+                device_token: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "200":
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          access_token: { type: string }
+                          refresh_token: { type: string }
+                          token_type: { type: string, example: Bearer }
+                          expires_in: { type: integer }
+                          member:
+                            type: object
+                            properties:
+                              id: { type: string, format: uuid }
+                              name: { type: string }
+                              membership_status: { type: string, enum: [active, inactive] }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/login/google:
+    post:
+      tags: [Auth]
+      summary: Login dengan Google ID token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id_token]
+              properties:
+                id_token: { type: string }
+                device_token: { type: string, nullable: true }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Kirim OTP reset password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, method]
+              properties:
+                identifier: { type: string }
+                method: { type: string, enum: [email, sms] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verifikasi kode OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, code]
+              properties:
+                identifier: { type: string }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password dengan OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, code, password, password_confirmation]
+              properties:
+                identifier: { type: string }
+                code: { type: string, minLength: 6, maxLength: 6 }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (revoke refresh token)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Profil user saat ini
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    put:
+      tags: [Auth]
+      summary: Perbarui profil
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                age: { type: integer, minimum: 1, maximum: 120 }
+                height_cm: { type: integer }
+                weight_kg: { type: number }
+                fitness_goal: { type: string }
+                profile_photo: { type: string, format: binary }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /auth/me/password:
+    put:
+      tags: [Auth]
+      summary: Ubah password
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, password, password_confirmation]
+              properties:
+                current_password: { type: string }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /memberships/packages:
+    get:
+      tags: [Membership]
+      summary: Daftar paket membership (publik)
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /memberships/packages/{id}:
+    get:
+      tags: [Membership]
+      summary: Detail paket membership (publik)
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /memberships/active:
+    get:
+      tags: [Membership]
+      summary: Membership aktif member
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /memberships/renew:
+    post:
+      tags: [Membership]
+      summary: Ajukan perpanjangan membership
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [package_id, payment_method]
+              properties:
+                package_id: { type: string, format: uuid }
+                payment_method: { type: string, enum: [transfer, cash, qris] }
+                payment_proof: { type: string, format: binary, description: "Wajib jika payment_method=transfer" }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /memberships/history:
+    get:
+      tags: [Membership]
+      summary: Riwayat renewal membership
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /attendance/face/register:
+    post:
+      tags: [Attendance]
+      summary: Daftarkan wajah untuk check-in
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [face_image]
+              properties:
+                face_image: { type: string, format: binary }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /attendance/checkin:
+    post:
+      tags: [Attendance]
+      summary: Check-in dengan verifikasi wajah
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [face_image]
+              properties:
+                face_image: { type: string, format: binary }
+                location: { type: string, maxLength: 255 }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /attendance/history:
+    get:
+      tags: [Attendance]
+      summary: Riwayat kehadiran member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+  /trainers:
+    get:
+      tags: [Trainer]
+      summary: Daftar trainer aktif
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /trainers/{id}:
+    get:
+      tags: [Trainer]
+      summary: Detail trainer dan jadwal
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /trainers/{id}/booking:
+    post:
+      tags: [Trainer]
+      summary: Booking sesi dengan trainer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [schedule_id, session_date]
+              properties:
+                schedule_id: { type: string, format: uuid }
+                session_date: { type: string, format: date }
+                notes: { type: string }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /bookings:
+    get:
+      tags: [Booking]
+      summary: Daftar booking member
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /bookings/{id}:
+    delete:
+      tags: [Booking]
+      summary: Batalkan booking
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /workout-plans:
+    get:
+      tags: [Workout]
+      summary: Rencana latihan aktif
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /workout-logs:
+    get:
+      tags: [Workout]
+      summary: Riwayat log latihan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+    post:
+      tags: [Workout]
+      summary: Catat log latihan
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutLogInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /progress/weight:
+    get:
+      tags: [Progress]
+      summary: Riwayat berat badan
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    post:
+      tags: [Progress]
+      summary: Catat berat badan
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [weight_kg]
+              properties:
+                weight_kg: { type: number, minimum: 20, maximum: 500 }
+                recorded_at: { type: string, format: date }
+                notes: { type: string }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /progress/weight/{id}:
+    delete:
+      tags: [Progress]
+      summary: Hapus catatan berat badan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /progress/chart:
+    get:
+      tags: [Progress]
+      summary: Data chart progress
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [weight, attendance, workout] }
+        - name: period
+          in: query
+          schema: { type: string, enum: [7d, 30d, 90d, 1y], default: 30d }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /progress/summary:
+    get:
+      tags: [Progress]
+      summary: Ringkasan progress bulan ini
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /notifications:
+    get:
+      tags: [Notification]
+      summary: Daftar notifikasi
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+  /notifications/{id}/read:
+    put:
+      tags: [Notification]
+      summary: Tandai notifikasi sudah dibaca
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /notifications/read-all:
+    put:
+      tags: [Notification]
+      summary: Tandai semua notifikasi sudah dibaca
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /notifications/{id}:
+    delete:
+      tags: [Notification]
+      summary: Hapus notifikasi
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /notifications/preferences:
+    get:
+      tags: [Notification]
+      summary: Preferensi notifikasi
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    put:
+      tags: [Notification]
+      summary: Perbarui preferensi notifikasi
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_enabled: { type: boolean }
+                email_enabled: { type: boolean }
+                sms_enabled: { type: boolean }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /chat/conversations:
+    get:
+      tags: [Chat]
+      summary: Daftar percakapan
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    post:
+      tags: [Chat]
+      summary: Buat percakapan baru
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trainer_id]
+              properties:
+                trainer_id: { type: string, format: uuid }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /chat/conversations/{id}/messages:
+    get:
+      tags: [Chat]
+      summary: Pesan dalam percakapan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+    post:
+      tags: [Chat]
+      summary: Kirim pesan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /feedback:
+    post:
+      tags: [Feedback]
+      summary: Kirim feedback
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating, category]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                category: { type: string, enum: [facility, trainer, service, cleanliness, other] }
+                message: { type: string }
+                is_anonymous: { type: boolean, default: false }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /faq:
+    get:
+      tags: [FAQ]
+      summary: Daftar FAQ
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /faq/categories:
+    get:
+      tags: [FAQ]
+      summary: Kategori FAQ
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/memberships:
+    get:
+      tags: [Admin - Membership]
+      summary: Daftar member dengan status membership
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+  /admin/memberships/activate:
+    post:
+      tags: [Admin - Membership]
+      summary: Aktivasi membership member
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, package_id, payment_method]
+              properties:
+                user_id: { type: string, format: uuid }
+                package_id: { type: string, format: uuid }
+                payment_method: { type: string, enum: [transfer, cash, qris] }
+                start_date: { type: string, format: date }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/memberships/{id}/renew:
+    put:
+      tags: [Admin - Membership]
+      summary: Perpanjang membership (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payment_method]
+              properties:
+                package_id: { type: string, format: uuid }
+                payment_method: { type: string, enum: [transfer, cash, qris] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/memberships/expired:
+    get:
+      tags: [Admin - Membership]
+      summary: Membership expired / akan expired
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: status
+          in: query
+          schema: { type: string, enum: [expiring_soon, expired], default: expiring_soon }
+        - name: days_before
+          in: query
+          schema: { type: integer, default: 7 }
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+  /admin/packages:
+    get:
+      tags: [Admin - Packages]
+      summary: Daftar semua paket
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    post:
+      tags: [Admin - Packages]
+      summary: Buat paket baru
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipPackageInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/packages/{id}:
+    put:
+      tags: [Admin - Packages]
+      summary: Perbarui paket
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipPackageInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    delete:
+      tags: [Admin - Packages]
+      summary: Nonaktifkan paket
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/members:
+    get:
+      tags: [Admin - Members]
+      summary: Daftar member (alias search)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [name, join_date, expired_date] }
+        - name: sort_dir
+          in: query
+          schema: { type: string, enum: [asc, desc] }
+        - name: membership_status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+    post:
+      tags: [Admin - Members]
+      summary: Tambah member
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, phone, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/members/search:
+    get:
+      tags: [Admin - Members]
+      summary: Cari dan filter member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [name, join_date, expired_date] }
+        - name: sort_dir
+          in: query
+          schema: { type: string, enum: [asc, desc] }
+        - name: membership_status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+  /admin/members/export:
+    get:
+      tags: [Admin - Members]
+      summary: Export member ke Excel
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: File Excel
+
+  /admin/members/import:
+    post:
+      tags: [Admin - Members]
+      summary: Import member dari Excel
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/members/{id}:
+    get:
+      tags: [Admin - Members]
+      summary: Detail member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    put:
+      tags: [Admin - Members]
+      summary: Perbarui member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                status: { type: string, enum: [active, inactive, suspended] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    delete:
+      tags: [Admin - Members]
+      summary: Hapus member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/attendance/live:
+    get:
+      tags: [Admin - Attendance]
+      summary: Kehadiran real-time hari ini
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/attendance/verify:
+    post:
+      tags: [Admin - Attendance]
+      summary: Verifikasi kehadiran manual
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [attendance_id, status]
+              properties:
+                attendance_id: { type: string, format: uuid }
+                status: { type: string, enum: [verified, rejected] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/attendance/history:
+    get:
+      tags: [Admin - Attendance]
+      summary: Riwayat kehadiran (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: user_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+  /admin/attendance/recap:
+    get:
+      tags: [Admin - Attendance]
+      summary: Rekap kehadiran
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, enum: [daily, weekly, monthly] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/trainers:
+    get:
+      tags: [Admin - Trainers]
+      summary: Daftar trainer
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    post:
+      tags: [Admin - Trainers]
+      summary: Tambah trainer
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainerInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/trainers/{id}:
+    put:
+      tags: [Admin - Trainers]
+      summary: Perbarui trainer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrainerInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    delete:
+      tags: [Admin - Trainers]
+      summary: Hapus trainer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/trainers/{id}/schedule:
+    get:
+      tags: [Admin - Trainers]
+      summary: Jadwal trainer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    post:
+      tags: [Admin - Trainers]
+      summary: Tambah jadwal trainer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [day_of_week, start_time, end_time, capacity]
+              properties:
+                day_of_week: { type: integer, minimum: 0, maximum: 6 }
+                start_time: { type: string, example: "08:00" }
+                end_time: { type: string, example: "10:00" }
+                capacity: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/trainers/{id}/performance:
+    get:
+      tags: [Admin - Trainers]
+      summary: Performa trainer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/workout-plans:
+    post:
+      tags: [Admin - Trainers]
+      summary: Buat rencana latihan untuk member
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, name, exercises]
+              properties:
+                user_id: { type: string, format: uuid }
+                name: { type: string }
+                exercises:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      exercise_name: { type: string }
+                      sets: { type: integer }
+                      reps: { type: integer }
+                      weight_kg: { type: number }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/dashboard/summary:
+    get:
+      tags: [Admin - Dashboard]
+      summary: Ringkasan dashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/dashboard/stats:
+    get:
+      tags: [Admin - Dashboard]
+      summary: Statistik dashboard
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, enum: [7d, 30d, 90d] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/reports/members:
+    get:
+      tags: [Admin - Reports]
+      summary: Laporan member
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/reports/attendance:
+    get:
+      tags: [Admin - Reports]
+      summary: Laporan kehadiran
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/reports/finance:
+    get:
+      tags: [Admin - Reports]
+      summary: Laporan keuangan
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/reports/export:
+    get:
+      tags: [Admin - Reports]
+      summary: Export laporan
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [members, attendance, finance] }
+        - name: format
+          in: query
+          schema: { type: string, enum: [pdf, xlsx], default: pdf }
+      responses:
+        "200":
+          description: File laporan
+
+  /admin/notifications/send:
+    post:
+      tags: [Admin - Notifications]
+      summary: Kirim notifikasi broadcast
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body, target]
+              properties:
+                title: { type: string }
+                body: { type: string }
+                target: { type: string, enum: [all, members, expired_soon] }
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/chat/conversations:
+    get:
+      tags: [Admin - Chat]
+      summary: Daftar percakapan (admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+
+  /admin/chat/conversations/{id}/messages:
+    get:
+      tags: [Admin - Chat]
+      summary: Pesan percakapan (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          $ref: "#/components/responses/Success"
+    post:
+      tags: [Admin - Chat]
+      summary: Balas pesan (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+      responses:
+        "201":
+          $ref: "#/components/responses/Success"
+
+  /admin/feedback:
+    get:
+      tags: [Admin - Feedback]
+      summary: Daftar feedback member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/PerPage"
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: category
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          $ref: "#/components/responses/PaginatedSuccess"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token. Dapatkan dari POST /auth/login
+
+  parameters:
+    UuidPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string, example: OK }
+        data: {}
+        meta:
+          type: object
+          properties:
+            page: { type: integer }
+            per_page: { type: integer }
+            total: { type: integer }
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        error_code: { type: string, nullable: true }
+        errors: { type: object }
+    WorkoutLogInput:
+      type: object
+      required: [exercises, duration_minutes]
+      properties:
+        workout_plan_id: { type: string, format: uuid }
+        exercises:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [exercise_name, sets, reps]
+            properties:
+              exercise_name: { type: string }
+              sets: { type: integer, minimum: 1 }
+              reps: { type: integer, minimum: 1 }
+              weight_kg: { type: number }
+        duration_minutes: { type: integer, minimum: 1 }
+        notes: { type: string }
+        logged_at: { type: string, format: date-time }
+    MembershipPackageInput:
+      type: object
+      required: [name, type, duration_days, price]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [daily, weekly, monthly, yearly] }
+        duration_days: { type: integer, minimum: 1 }
+        price: { type: number, minimum: 0 }
+        description: { type: string }
+        benefits: { type: array, items: { type: string } }
+        status: { type: string, enum: [active, inactive] }
+    TrainerInput:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        specialization: { type: string }
+        experience_years: { type: integer }
+        hourly_rate: { type: number }
+        bio: { type: string }
+        certification: { type: string }
+
+  responses:
+    Success:
+      description: Operasi berhasil
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SuccessEnvelope"
+    PaginatedSuccess:
+      description: Daftar dengan paginasi
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SuccessEnvelope"
+    ValidationError:
+      description: Validasi gagal
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Unauthorized:
+      description: Token tidak valid atau tidak ada
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: Akses ditolak (role atau membership)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Konflik (mis. jadwal penuh)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
