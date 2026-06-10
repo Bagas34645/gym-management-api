@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Exceptions\ApiException;
 use App\Http\Controllers\Api\V1\Controller;
 use App\Support\ApiResponse;
 use App\Models\Membership;
@@ -11,6 +12,7 @@ use App\Models\PaymentRecord;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AdminMembershipController extends Controller
@@ -125,6 +127,124 @@ class AdminMembershipController extends Controller
             'membership_id' => $membership->id,
             'new_end_date' => $newEnd->format('Y-m-d'),
         ], 'Membership berhasil diperpanjang');
+    }
+
+    public function renewals(Request $request): JsonResponse
+    {
+        $perPage = min((int) $request->get('per_page', 20), 100);
+        $status = $request->get('status', 'pending_verification');
+
+        $query = MembershipRenewal::query()
+            ->with(['user', 'package'])
+            ->orderByDesc('created_at');
+
+        if ($status !== 'all') {
+            $query->where('status', $status);
+        }
+
+        $paginator = $query->paginate($perPage);
+
+        $data = collect($paginator->items())->map(fn (MembershipRenewal $r) => [
+            'id' => $r->id,
+            'member_name' => $r->user->name,
+            'email' => $r->user->email,
+            'package_name' => $r->package->name,
+            'amount_paid' => (float) $r->amount_paid,
+            'payment_method' => $r->payment_method,
+            'payment_proof_url' => $r->payment_proof_url,
+            'previous_end_date' => $r->previous_end_date?->format('Y-m-d'),
+            'new_end_date' => $r->new_end_date->format('Y-m-d'),
+            'status' => $r->status,
+            'created_at' => $r->created_at?->toIso8601String(),
+        ]);
+
+        return ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
+    }
+
+    public function approveRenewal(Request $request, string $id): JsonResponse
+    {
+        $renewal = MembershipRenewal::query()->with(['membership', 'package'])->findOrFail($id);
+
+        if ($renewal->status !== 'pending_verification') {
+            throw new ApiException('Renewal sudah diproses', null, 400);
+        }
+
+        $membership = DB::transaction(function () use ($renewal, $request) {
+            $membership = $renewal->membership;
+
+            // Enforce the "one active membership per user" rule before activating.
+            Membership::query()
+                ->where('user_id', $renewal->user_id)
+                ->where('status', 'active')
+                ->where('id', '!=', $membership->id)
+                ->update(['status' => 'expired']);
+
+            $membership->update([
+                'status' => 'active',
+                'package_id' => $renewal->package_id,
+                'end_date' => $renewal->new_end_date->toDateString(),
+                'payment_method' => $renewal->payment_method,
+                'payment_status' => 'completed',
+            ]);
+
+            $renewal->update([
+                'status' => 'approved',
+                'verified_by' => $request->user()->id,
+                'verified_at' => now(),
+            ]);
+
+            PaymentRecord::query()->create([
+                'user_id' => $renewal->user_id,
+                'membership_id' => $membership->id,
+                'renewal_id' => $renewal->id,
+                'amount' => $renewal->amount_paid,
+                'payment_method' => $renewal->payment_method,
+                'payment_date' => now()->toDateString(),
+                'reference_number' => 'PAY-'.strtoupper(Str::random(10)),
+                'status' => 'completed',
+            ]);
+
+            return $membership;
+        });
+
+        return $this->success([
+            'membership_id' => $membership->id,
+            'status' => $membership->status,
+            'end_date' => $membership->end_date->format('Y-m-d'),
+        ], 'Renewal disetujui dan membership diaktifkan');
+    }
+
+    public function rejectRenewal(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $renewal = MembershipRenewal::query()->with('membership')->findOrFail($id);
+
+        if ($renewal->status !== 'pending_verification') {
+            throw new ApiException('Renewal sudah diproses', null, 400);
+        }
+
+        DB::transaction(function () use ($renewal, $request) {
+            $renewal->update([
+                'status' => 'rejected',
+                'verified_by' => $request->user()->id,
+                'verified_at' => now(),
+            ]);
+
+            // If this was a first-time activation, the membership is still
+            // pending — mark it inactive so it doesn't linger unverified.
+            $membership = $renewal->membership;
+            if ($membership && $membership->status === 'pending_verification') {
+                $membership->update([
+                    'status' => 'inactive',
+                    'payment_status' => 'failed',
+                ]);
+            }
+        });
+
+        return $this->success(null, 'Renewal ditolak');
     }
 
     public function expired(Request $request): JsonResponse

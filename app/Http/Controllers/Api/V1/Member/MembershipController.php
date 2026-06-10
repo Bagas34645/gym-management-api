@@ -10,7 +10,7 @@ use App\Models\MembershipPackage;
 use App\Models\MembershipRenewal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class MembershipController extends Controller
 {
@@ -66,9 +66,6 @@ class MembershipController extends Controller
         }
 
         $user = $request->user();
-        $current = $user->activeMembership;
-        $previousEnd = $current?->end_date ?? now()->toDateString();
-        $newEnd = now()->parse($previousEnd)->addDays($package->duration_days)->toDateString();
 
         $proofUrl = null;
         if ($request->hasFile('payment_proof')) {
@@ -76,23 +73,49 @@ class MembershipController extends Controller
             $proofUrl = 'storage/'.$proofUrl;
         }
 
-        $renewal = MembershipRenewal::query()->create([
-            'membership_id' => $current?->id,
-            'user_id' => $user->id,
-            'package_id' => $package->id,
-            'previous_end_date' => $previousEnd,
-            'new_end_date' => $newEnd,
-            'status' => 'pending_verification',
-            'payment_method' => $data['payment_method'],
-            'payment_proof_url' => $proofUrl,
-            'amount_paid' => $package->price,
-        ]);
+        $renewal = DB::transaction(function () use ($user, $package, $data, $proofUrl) {
+            $current = $user->activeMembership;
+
+            // First-time activation: there is no membership to renew yet, so
+            // create a pending one. A renewal record requires a membership_id
+            // (non-nullable FK), and admin verification will activate it later.
+            if (! $current) {
+                $start = now();
+                $current = Membership::query()->create([
+                    'user_id' => $user->id,
+                    'package_id' => $package->id,
+                    'status' => 'pending_verification',
+                    'start_date' => $start->toDateString(),
+                    'end_date' => $start->copy()->addDays($package->duration_days)->toDateString(),
+                    'payment_method' => $data['payment_method'],
+                    'payment_status' => 'pending',
+                    'payment_proof_url' => $proofUrl,
+                ]);
+                $previousEnd = $start->toDateString();
+            } else {
+                $previousEnd = $current->end_date->toDateString();
+            }
+
+            $newEnd = now()->parse($previousEnd)->addDays($package->duration_days)->toDateString();
+
+            return MembershipRenewal::query()->create([
+                'membership_id' => $current->id,
+                'user_id' => $user->id,
+                'package_id' => $package->id,
+                'previous_end_date' => $previousEnd,
+                'new_end_date' => $newEnd,
+                'status' => 'pending_verification',
+                'payment_method' => $data['payment_method'],
+                'payment_proof_url' => $proofUrl,
+                'amount_paid' => $package->price,
+            ]);
+        });
 
         return $this->success([
             'renewal_id' => $renewal->id,
             'status' => $renewal->status,
             'package' => $package->name,
-            'new_end_date' => $newEnd,
+            'new_end_date' => $renewal->new_end_date->format('Y-m-d'),
         ], 'Renewal berhasil', null, 201);
     }
 

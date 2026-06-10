@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\Admin\AttendanceAdminController;
 use App\Http\Controllers\Api\V1\Admin\AdminMembershipController;
 use App\Http\Controllers\Api\V1\Admin\ChatAdminController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
+use App\Http\Controllers\Api\V1\Admin\FaceAdminController;
 use App\Http\Controllers\Api\V1\Admin\FeedbackAdminController;
 use App\Http\Controllers\Api\V1\Admin\MemberController;
 use App\Http\Controllers\Api\V1\Admin\NotificationAdminController;
@@ -55,6 +56,7 @@ Route::middleware(['auth.jwt', 'rate.headers:300,1'])->group(function () {
 
     Route::prefix('attendance')->group(function () {
         Route::post('/face/register', [AttendanceController::class, 'registerFace']);
+        Route::get('/face/status', [AttendanceController::class, 'faceStatus']);
         Route::middleware(['rate.headers:10,60'])->post('/checkin', [AttendanceController::class, 'checkin']);
         Route::get('/history', [AttendanceController::class, 'history']);
     });
@@ -96,6 +98,9 @@ Route::middleware(['auth.jwt', 'rate.headers:300,1'])->group(function () {
 Route::middleware(['auth.jwt', 'role:admin', 'rate.headers:500,1'])->prefix('admin')->group(function () {
     Route::get('/memberships', [AdminMembershipController::class, 'index']);
     Route::post('/memberships/activate', [AdminMembershipController::class, 'activate']);
+    Route::get('/memberships/renewals', [AdminMembershipController::class, 'renewals']);
+    Route::post('/memberships/renewals/{id}/approve', [AdminMembershipController::class, 'approveRenewal']);
+    Route::post('/memberships/renewals/{id}/reject', [AdminMembershipController::class, 'rejectRenewal']);
     Route::put('/memberships/{id}/renew', [AdminMembershipController::class, 'renew']);
     Route::get('/memberships/expired', [AdminMembershipController::class, 'expired']);
 
@@ -114,6 +119,12 @@ Route::middleware(['auth.jwt', 'role:admin', 'rate.headers:500,1'])->prefix('adm
     Route::post('/attendance/verify', [AttendanceAdminController::class, 'verify']);
     Route::get('/attendance/history', [AttendanceAdminController::class, 'history']);
     Route::get('/attendance/recap', [AttendanceAdminController::class, 'recap']);
+    Route::middleware(['rate.headers:120,1'])->post('/attendance/kiosk-checkin', [AttendanceAdminController::class, 'kioskCheckin']);
+
+    Route::get('/faces', [FaceAdminController::class, 'index']);
+    Route::post('/faces/{id}/verify', [FaceAdminController::class, 'verify']);
+    Route::post('/faces/{id}/reject', [FaceAdminController::class, 'reject']);
+    Route::delete('/faces/{id}', [FaceAdminController::class, 'destroy']);
 
     Route::get('/trainers', [TrainerAdminController::class, 'index']);
     Route::post('/trainers', [TrainerAdminController::class, 'store']);

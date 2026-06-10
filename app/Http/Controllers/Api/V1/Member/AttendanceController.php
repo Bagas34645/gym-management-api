@@ -11,6 +11,7 @@ use App\Models\FaceRegistration;
 use App\Services\Face\FaceEmbeddingEncryption;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class AttendanceController extends Controller
 {
@@ -24,24 +25,61 @@ class AttendanceController extends Controller
         $request->validate(['face_image' => ['required', 'image', 'max:5120']]);
 
         $user = $request->user();
-        $result = $this->faceService->register($request->file('face_image'));
+        $image = $request->file('face_image');
+        $result = $this->faceService->register($image);
         $encrypted = $this->encryption->encrypt($result['embedding']);
+
+        $existing = FaceRegistration::query()->where('user_id', $user->id)->first();
+        if ($existing && $existing->face_image_path) {
+            Storage::disk('public')->delete($existing->face_image_path);
+        }
+
+        $path = $image->store('faces', 'public');
 
         $registration = FaceRegistration::query()->updateOrCreate(
             ['user_id' => $user->id],
             [
                 'face_embedding' => $encrypted,
                 'embedding_vector' => json_encode($result['embedding']),
+                'face_image_path' => $path,
                 'registered_at' => now(),
                 'updated_at' => now(),
-                'is_verified' => true,
+                'is_verified' => false,
+                'verified_by' => null,
+                'verified_at' => null,
+                'rejection_reason' => null,
             ],
         );
 
         return $this->success([
             'face_id' => $registration->id,
+            'status' => 'pending',
             'registered_at' => $registration->registered_at->toIso8601String(),
-        ], 'Wajah berhasil didaftarkan');
+        ], 'Wajah berhasil didaftarkan dan menunggu verifikasi admin');
+    }
+
+    public function faceStatus(Request $request): JsonResponse
+    {
+        $registration = FaceRegistration::query()->where('user_id', $request->user()->id)->first();
+
+        if (! $registration) {
+            return $this->success(['status' => 'none']);
+        }
+
+        if ($registration->rejection_reason) {
+            $status = 'rejected';
+        } elseif ($registration->is_verified) {
+            $status = 'verified';
+        } else {
+            $status = 'pending';
+        }
+
+        return $this->success([
+            'status' => $status,
+            'registered_at' => $registration->registered_at?->toIso8601String(),
+            'verified_at' => $registration->verified_at?->toIso8601String(),
+            'rejection_reason' => $registration->rejection_reason,
+        ]);
     }
 
     public function checkin(Request $request): JsonResponse

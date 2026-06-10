@@ -49,6 +49,28 @@ class FaceRecognitionClient implements FaceRecognitionInterface
         ];
     }
 
+    public function identify(UploadedFile $image, array $candidates): array
+    {
+        $response = Http::timeout(15)
+            ->withHeaders(['X-Internal-Api-Key' => config('gym.face_api_key')])
+            ->attach('face_image', file_get_contents($image->getRealPath()), $image->getClientOriginalName())
+            ->post(config('gym.face_api_url').'/v1/faces/identify', [
+                'candidates' => json_encode($candidates),
+            ]);
+
+        if (! $response->successful()) {
+            throw new ApiException('Layanan face recognition tidak tersedia', ErrorCode::FaceBadQuality, 503);
+        }
+
+        $body = $response->json();
+
+        return [
+            'matched' => (bool) ($body['data']['matched'] ?? false),
+            'user_id' => $body['data']['user_id'] ?? null,
+            'confidence' => (float) ($body['data']['confidence'] ?? 0),
+        ];
+    }
+
     private function request(string $path, UploadedFile $image): array
     {
         $response = Http::timeout(10)
