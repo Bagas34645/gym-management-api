@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Route;
 Route::middleware(['rate.headers:5,1'])->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/resend-otp', [AuthController::class, 'resendOtp']);
     Route::post('/auth/login/google', [AuthController::class, 'googleLogin']);
 });
 

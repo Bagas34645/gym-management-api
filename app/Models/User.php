@@ -35,6 +35,7 @@ class User extends Authenticatable
         'device_token',
         'last_login_at',
         'email_verified_at',
+        'is_verified',
     ];
 
     protected $hidden = [
@@ -47,6 +48,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
+            'is_verified' => 'boolean',
             'weight_kg' => 'decimal:2',
         ];
     }

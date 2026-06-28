@@ -34,6 +34,33 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
 
+            // ✅ Hapus user lama yang belum terverifikasi dengan email/phone sama
+        User::query()
+            ->where('is_verified', false)
+            ->where(fn($q) => $q
+                ->where('email', $data['email'])
+                ->orWhere('phone', $data['phone'])
+            )
+            ->delete();
+    
+        // ✅ Baru validasi unique setelah hapus yang belum verified
+        $emailExists = User::query()->where('email', $data['email'])->exists();
+        $phoneExists = User::query()->where('phone', $data['phone'])->exists();
+    
+        if ($emailExists) {
+            return response()->json([
+                'message' => 'Email sudah digunakan',
+                'errors'  => ['email' => ['Email sudah digunakan oleh akun aktif']],
+            ], 422);
+        }
+    
+        if ($phoneExists) {
+            return response()->json([
+                'message' => 'Nomor HP sudah digunakan',
+                'errors'  => ['phone' => ['Nomor HP sudah digunakan oleh akun aktif']],
+            ], 422);
+        }
+
         $user = User::query()->create([
             'name' => $data['name'],
             'email' => $data['email'],
@@ -41,14 +68,18 @@ class AuthController extends Controller
             'password' => $data['password'],
             'role' => 'member',
             'status' => 'active',
+            'is_verified' => false,
         ]);
+
+        // send OTP to email for verification
+        $expires = $this->otp->send($user->email, 'email');
 
         return $this->success([
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'phone' => $user->phone,
-        ], 'Registrasi berhasil', null, 201);
+        ], 'Registrasi berhasil. Kode OTP dikirim ke email', ['expires_in' => $expires], 201);
     }
 
     public function login(Request $request): JsonResponse
@@ -72,6 +103,10 @@ class AuthController extends Controller
 
         if ($user->status !== 'active') {
             throw new ApiException('Akun tidak aktif', ErrorCode::AuthInvalidToken, 403);
+        }
+
+        if (! $user->is_verified) {
+            throw new ApiException('Akun belum terverifikasi', ErrorCode::AuthInvalidToken, 403);
         }
 
         $this->loginAttempts->clear($data['identifier']);
@@ -197,15 +232,69 @@ class AuthController extends Controller
     public function verifyOtp(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'identifier' => ['required', 'string'],
+            'email' => ['required_without:identifier', 'nullable', 'email'],
+            'identifier' => ['required_without:email', 'nullable', 'string'],
             'code' => ['required', 'string', 'size:6'],
         ]);
 
-        if (! $this->otp->verify($data['identifier'], $data['code'])) {
+        $identifier = $data['email'] ?? $data['identifier'];
+
+        if (! $this->otp->verify($identifier, $data['code'])) {
             throw new ApiException('Kode OTP tidak valid', null, 422);
         }
 
+        // mark user as verified if exists
+        $user = User::query()->where('email', $identifier)->first();
+        if ($user && ! $user->is_verified) {
+            $user->update(['is_verified' => true, 'email_verified_at' => now()]);
+            $this->otp->clear($identifier);
+        }
+
+        // clear stored OTP
+    //     if ($user && $user->is_verified) {
+    //         $this->otp->clear($identifier);
+    //    }
+
         return $this->success(null, 'OTP terverifikasi');
+    }
+
+    public function resendOtp(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'identifier' => ['required', 'string'],
+        ]);
+
+// ✅ Cari user berdasarkan email atau phone
+        $user = User::query()
+            ->where(fn($q) => $q
+                ->where('email', $data['identifier'])
+                ->orWhere('phone', $data['identifier'])
+            )
+            ->first();       
+            
+        if (! $user) {
+            throw new ApiException('Member tidak ditemukan', ErrorCode::MemberNotFound, 404);
+        }
+
+        if ($user->is_verified) {
+            return $this->success(null, 'Akun telah terverifikasi');
+        }
+
+        // check resend limit (3 per hour)
+        // $resendKey = 'otp_resend:'.hash('sha256', strtolower(trim($data['email'])));
+        // $count = cache($resendKey, 0);
+        // if ($count >= 3) {
+        //     throw new ApiException('Batas pengiriman ulang OTP tercapai. Coba lagi nanti.', null, 429);
+        // }
+
+            // ✅ Pengecekan limit sekarang dari OtpService, bukan duplikat di sini
+        if (! $this->otp->checkResendLimit($data['identifier'])) {
+        throw new ApiException('Batas pengiriman ulang OTP tercapai. Coba lagi nanti.', null, 429);
+       }
+
+        $expires = $this->otp->send($user['email'], 'email');
+
+        return $this->success(['expires_in' => $expires], 'Kode OTP dikirim ulang ke email');
     }
 
     public function resetPassword(Request $request): JsonResponse
@@ -216,8 +305,14 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
 
-        if (! $this->otp->verify($data['identifier'], $data['code'])) {
-            throw new ApiException('Kode OTP tidak valid', null, 422);
+        // return response()->json([
+        //     'identifier' => $data['identifier'],
+        //     'is_verified' => $this->otp->isVerified($data['identifier']),
+        // ]);
+
+            // ✅ Cukup cek apakah sudah pernah diverifikasi via cache
+        if (! $this->otp->isVerified($data['identifier'])) {
+            throw new ApiException('Sesi OTP tidak valid atau sudah expired. Silakan ulangi.', null, 422);
         }
 
         $user = User::query()
