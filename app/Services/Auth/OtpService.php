@@ -13,6 +13,7 @@ class OtpService
 {
     private const RESEND_LIMIT = 3;
     private const RESEND_WINDOW = 3600; // 1 jam
+    private const MAX_VERIFY_ATTEMPTS = 5;
 
     public function send(string $identifier, string $method): int
     {
@@ -29,6 +30,9 @@ class OtpService
                 'expires_at' => now()->addSeconds($ttl),
             ]
         );
+
+        // OTP baru dikirim, reset counter percobaan verifikasi yang gagal.
+        Cache::forget($this->attemptsKey($identifier));
 
         if ($method === 'email' && filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
             try {
@@ -47,24 +51,30 @@ class OtpService
             Log::info('OTP SMS (dev)', ['identifier' => $identifier, 'code' => $code]);
         }
 
-        // ✅ Atomic: set key hanya jika belum ada, lalu increment
-        $resendKey = $this->resendKey($identifier);
-        Cache::add($resendKey, 0, self::RESEND_WINDOW);
-        Cache::increment($resendKey);
-
         return $ttl;
     }
 
-    // ✅ Pengecekan limit dipindah ke sini agar tidak tersebar
-    public function checkResendLimit(string $identifier): bool
+    /**
+     * Catat percobaan resend secara atomik. Mengembalikan false bila limit terlampaui.
+     */
+    public function registerResendAttempt(string $identifier): bool
     {
-        $count = Cache::get($this->resendKey($identifier), 0);
-        return $count < self::RESEND_LIMIT;
+        $key = $this->resendKey($identifier);
+        Cache::add($key, 0, self::RESEND_WINDOW);
+        $count = Cache::increment($key);
+
+        return $count <= self::RESEND_LIMIT;
     }
 
     public function verify(string $identifier, string $code): bool
     {
         $identifierNormalized = strtolower(trim($identifier));
+        $attemptsKey = $this->attemptsKey($identifier);
+
+        // Lindungi dari brute force: tolak setelah terlalu banyak percobaan gagal.
+        if ((int) Cache::get($attemptsKey, 0) >= self::MAX_VERIFY_ATTEMPTS) {
+            return false;
+        }
 
         $otp = EmailOtp::query()
             ->where('identifier', $identifierNormalized)
@@ -72,14 +82,14 @@ class OtpService
             ->latest()
             ->first();
 
-        if (! $otp) {
+        if (! $otp || ! Hash::check($code, $otp->code_hash)) {
+            Cache::add($attemptsKey, 0, config('gym.otp_ttl'));
+            Cache::increment($attemptsKey);
+
             return false;
         }
 
-        if (! Hash::check($code, $otp->code_hash)) {
-            return false;
-        }
-
+        Cache::forget($attemptsKey);
         Cache::put($this->verifiedKey($identifier), true, config('gym.otp_ttl'));
 
         return true;
@@ -96,17 +106,21 @@ class OtpService
         EmailOtp::query()->where('identifier', $identifierNormalized)->delete();
         Cache::forget($this->verifiedKey($identifier));
         Cache::forget($this->resendKey($identifier));
+        Cache::forget($this->attemptsKey($identifier));
     }
 
     private function resendKey(string $identifier): string
     {
-        return 'otp_resend:' . hash('sha256', strtolower(trim($identifier)));
+        return 'otp_resend:'.hash('sha256', strtolower(trim($identifier)));
     }
 
     private function verifiedKey(string $identifier): string
     {
-        return 'otp_verified:' . hash('sha256', strtolower(trim($identifier)));
+        return 'otp_verified:'.hash('sha256', strtolower(trim($identifier)));
     }
 
-    // cacheKey tidak dipakai, dihapus agar tidak membingungkan
+    private function attemptsKey(string $identifier): string
+    {
+        return 'otp_attempts:'.hash('sha256', strtolower(trim($identifier)));
+    }
 }
