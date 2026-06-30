@@ -20,6 +20,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role' => 'super_admin',
                 'status' => 'active',
+                'is_verified' => true,
             ]
         );
 
@@ -31,6 +32,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role' => 'admin',
                 'status' => 'active',
+                'is_verified' => true,
             ]
         );
 
@@ -42,6 +44,7 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role' => 'admin',
                 'status' => 'active',
+                'is_verified' => true,
             ]
         );
 
