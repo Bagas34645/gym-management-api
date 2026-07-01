@@ -30,36 +30,44 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'unique:users,email'],
-            'phone' => ['required', 'regex:/^08\d{8,11}$/', 'unique:users,phone'],
+            'email' => ['required', 'email'],
+            'phone' => ['required', 'regex:/^08\d{8,11}$/'],
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
 
-            // ✅ Hapus user lama yang belum terverifikasi dengan email/phone sama
-        User::query()
+
+        // Hapus permanen akun lama yang belum terverifikasi dengan email/phone sama.
+        // forceDelete dipakai (bukan soft delete) agar constraint UNIQUE email/phone
+        // benar-benar dilepas sehingga registrasi ulang bisa dilakukan.
+        User::withTrashed()
             ->where('is_verified', false)
-            ->where(fn($q) => $q
+            ->where(fn ($q) => $q
                 ->where('email', $data['email'])
                 ->orWhere('phone', $data['phone'])
             )
-            ->delete();
-    
-        // ✅ Baru validasi unique setelah hapus yang belum verified
-        $emailExists = User::query()->where('email', $data['email'])->exists();
-        $phoneExists = User::query()->where('phone', $data['phone'])->exists();
-    
+            ->forceDelete();
+
+        // Cek sisa akun (termasuk yang soft-deleted) yang masih memakai email/phone.
+        $emailExists = User::withTrashed()->where('email', $data['email'])->exists();
+        $phoneExists = User::withTrashed()->where('phone', $data['phone'])->exists();
+
         if ($emailExists) {
-            return response()->json([
-                'message' => 'Email sudah digunakan',
-                'errors'  => ['email' => ['Email sudah digunakan oleh akun aktif']],
-            ], 422);
+            throw new ApiException(
+                'Email sudah digunakan',
+                ErrorCode::MemberDuplicate,
+                422,
+                ['email' => ['Email sudah digunakan oleh akun lain']],
+            );
         }
-    
+
         if ($phoneExists) {
-            return response()->json([
-                'message' => 'Nomor HP sudah digunakan',
-                'errors'  => ['phone' => ['Nomor HP sudah digunakan oleh akun aktif']],
-            ], 422);
+            throw new ApiException(
+                'Nomor HP sudah digunakan',
+                ErrorCode::MemberDuplicate,
+                422,
+                ['phone' => ['Nomor HP sudah digunakan oleh akun lain']],
+            );
+
         }
 
         $user = User::query()->create([
@@ -173,6 +181,7 @@ class AuthController extends Controller
                 'status' => 'active',
                 'is_verified'       => true,
                 'email_verified_at' => now(),
+                'is_verified' => true,
             ],
         );
 
@@ -254,17 +263,18 @@ class AuthController extends Controller
             throw new ApiException('Kode OTP tidak valid', null, 422);
         }
 
-        // mark user as verified if exists
-        $user = User::query()->where('email', $identifier)->first();
+
+        // Tandai akun sebagai terverifikasi bila OTP dipakai untuk registrasi.
+        $user = User::query()
+            ->where(fn ($q) => $q->where('email', $identifier)->orWhere('phone', $identifier))
+            ->first();
+
         if ($user && ! $user->is_verified) {
             $user->update(['is_verified' => true, 'email_verified_at' => now()]);
+            // OTP registrasi sudah dipakai, hapus agar tidak bisa dipakai ulang.
             $this->otp->clear($identifier);
         }
 
-        // clear stored OTP
-    //     if ($user && $user->is_verified) {
-    //         $this->otp->clear($identifier);
-    //    }
 
         return $this->success(null, 'OTP terverifikasi');
     }
@@ -275,14 +285,15 @@ class AuthController extends Controller
             'identifier' => ['required', 'string'],
         ]);
 
-// ✅ Cari user berdasarkan email atau phone
+
         $user = User::query()
-            ->where(fn($q) => $q
+            ->where(fn ($q) => $q
                 ->where('email', $data['identifier'])
                 ->orWhere('phone', $data['identifier'])
             )
-            ->first();       
-            
+            ->first();
+
+
         if (! $user) {
             throw new ApiException('Member tidak ditemukan', ErrorCode::MemberNotFound, 404);
         }
@@ -291,19 +302,14 @@ class AuthController extends Controller
             return $this->success(null, 'Akun telah terverifikasi');
         }
 
-        // check resend limit (3 per hour)
-        // $resendKey = 'otp_resend:'.hash('sha256', strtolower(trim($data['email'])));
-        // $count = cache($resendKey, 0);
-        // if ($count >= 3) {
-        //     throw new ApiException('Batas pengiriman ulang OTP tercapai. Coba lagi nanti.', null, 429);
-        // }
 
-            // ✅ Pengecekan limit sekarang dari OtpService, bukan duplikat di sini
-        if (! $this->otp->checkResendLimit($data['identifier'])) {
-        throw new ApiException('Batas pengiriman ulang OTP tercapai. Coba lagi nanti.', null, 429);
-       }
+        // Increment + cek limit secara atomik untuk mencegah race condition.
+        if (! $this->otp->registerResendAttempt($user->email)) {
+            throw new ApiException('Batas pengiriman ulang OTP tercapai. Coba lagi nanti.', ErrorCode::AuthTooManyAttempts, 429);
+        }
 
-        $expires = $this->otp->send($user['email'], 'email');
+        $expires = $this->otp->send($user->email, 'email');
+
 
         return $this->success(['expires_in' => $expires], 'Kode OTP dikirim ulang ke email');
     }

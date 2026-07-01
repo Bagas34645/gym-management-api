@@ -35,8 +35,11 @@ Route::middleware(['rate.headers:3,15'])->group(function () {
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 });
 
-Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
-Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+Route::middleware(['rate.headers:5,5'])->group(function () {
+    Route::post('/auth/verify-otp', [AuthController::class, 'verifyOtp']);
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+});
+
 Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
 Route::get('/memberships/packages', [MembershipController::class, 'packages']);
