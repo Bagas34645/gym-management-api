@@ -6,6 +6,7 @@ use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Api\V1\Controller;
 use App\Models\User;
+use App\Services\Auth\FirebaseService;
 use App\Services\Auth\JwtService;
 use App\Services\Auth\LoginAttemptService;
 use App\Services\Auth\OtpService;
@@ -13,9 +14,8 @@ use App\Services\Auth\RefreshTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Password;
-use App\Services\Auth\FirebaseService;
 
 class AuthController extends Controller
 {
@@ -34,7 +34,6 @@ class AuthController extends Controller
             'phone' => ['required', 'regex:/^08\d{8,11}$/'],
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
-
 
         // Hapus permanen akun lama yang belum terverifikasi dengan email/phone sama.
         // forceDelete dipakai (bukan soft delete) agar constraint UNIQUE email/phone
@@ -67,7 +66,6 @@ class AuthController extends Controller
                 422,
                 ['phone' => ['Nomor HP sudah digunakan oleh akun lain']],
             );
-
         }
 
         $user = User::query()->create([
@@ -148,19 +146,15 @@ class AuthController extends Controller
             'device_token' => ['nullable', 'string', 'max:500'],
         ]);
 
-       // ✅ Verifikasi via Firebase Admin SDK
+        // Verifikasi ID token Google via Firebase Admin SDK.
         try {
             $firebase = new FirebaseService();
             $payload = $firebase->verifyIdToken($data['id_token']);
         } catch (\Throwable $e) {
+            Log::warning('Firebase verifyIdToken failed', ['error' => $e->getMessage()]);
             throw new ApiException('Google token tidak valid', ErrorCode::AuthInvalidToken, 401);
         }
 
-        // if (! $response->successful()) {
-        //     throw new ApiException('Google token tidak valid', ErrorCode::AuthInvalidToken, 401);
-        // }
-
-        // $payload = $response->json();
         $email = $payload['email'] ?? null;
 
         if (! $email) {
@@ -168,7 +162,7 @@ class AuthController extends Controller
         }
 
         if (! $payload['email_verified']) {
-        throw new ApiException('Email Google belum diverifikasi', ErrorCode::AuthInvalidToken, 401);
+            throw new ApiException('Email Google belum diverifikasi', ErrorCode::AuthInvalidToken, 401);
         }
 
         $user = User::query()->firstOrCreate(
@@ -179,7 +173,6 @@ class AuthController extends Controller
                 'password' => bcrypt(str()->random(32)),
                 'role' => 'member',
                 'status' => 'active',
-                'is_verified'       => true,
                 'email_verified_at' => now(),
                 'is_verified' => true,
             ],
@@ -189,8 +182,7 @@ class AuthController extends Controller
             $user->update(['device_token' => $data['device_token']]);
         }
 
-        $user->update(['last_login_at' => now(),
-        'is_verified'   => true,]);
+        $user->update(['last_login_at' => now(), 'is_verified' => true]);
 
         return $this->success([
             'access_token' => $this->jwt->createAccessToken($user),
@@ -263,7 +255,6 @@ class AuthController extends Controller
             throw new ApiException('Kode OTP tidak valid', null, 422);
         }
 
-
         // Tandai akun sebagai terverifikasi bila OTP dipakai untuk registrasi.
         $user = User::query()
             ->where(fn ($q) => $q->where('email', $identifier)->orWhere('phone', $identifier))
@@ -275,7 +266,6 @@ class AuthController extends Controller
             $this->otp->clear($identifier);
         }
 
-
         return $this->success(null, 'OTP terverifikasi');
     }
 
@@ -285,14 +275,12 @@ class AuthController extends Controller
             'identifier' => ['required', 'string'],
         ]);
 
-
         $user = User::query()
             ->where(fn ($q) => $q
                 ->where('email', $data['identifier'])
                 ->orWhere('phone', $data['identifier'])
             )
             ->first();
-
 
         if (! $user) {
             throw new ApiException('Member tidak ditemukan', ErrorCode::MemberNotFound, 404);
@@ -302,14 +290,12 @@ class AuthController extends Controller
             return $this->success(null, 'Akun telah terverifikasi');
         }
 
-
         // Increment + cek limit secara atomik untuk mencegah race condition.
         if (! $this->otp->registerResendAttempt($user->email)) {
             throw new ApiException('Batas pengiriman ulang OTP tercapai. Coba lagi nanti.', ErrorCode::AuthTooManyAttempts, 429);
         }
 
         $expires = $this->otp->send($user->email, 'email');
-
 
         return $this->success(['expires_in' => $expires], 'Kode OTP dikirim ulang ke email');
     }
@@ -322,14 +308,8 @@ class AuthController extends Controller
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
 
-        // return response()->json([
-        //     'identifier' => $data['identifier'],
-        //     'is_verified' => $this->otp->isVerified($data['identifier']),
-        // ]);
-
-            // ✅ Cukup cek apakah sudah pernah diverifikasi via cache
-        if (! $this->otp->isVerified($data['identifier'])) {
-            throw new ApiException('Sesi OTP tidak valid atau sudah expired. Silakan ulangi.', null, 422);
+        if (! $this->otp->verify($data['identifier'], $data['code'])) {
+            throw new ApiException('Kode OTP tidak valid', null, 422);
         }
 
         $user = User::query()
