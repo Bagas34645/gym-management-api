@@ -6,6 +6,7 @@ use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Api\V1\Controller;
 use App\Models\User;
+use App\Services\Auth\FirebaseService;
 use App\Services\Auth\JwtService;
 use App\Services\Auth\LoginAttemptService;
 use App\Services\Auth\OtpService;
@@ -13,7 +14,7 @@ use App\Services\Auth\RefreshTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
@@ -145,25 +146,29 @@ class AuthController extends Controller
             'device_token' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $response = Http::get('https://oauth2.googleapis.com/tokeninfo', [
-            'id_token' => $data['id_token'],
-        ]);
-
-        if (! $response->successful()) {
+        // Verifikasi ID token Google via Firebase Admin SDK.
+        try {
+            $firebase = new FirebaseService();
+            $payload = $firebase->verifyIdToken($data['id_token']);
+        } catch (\Throwable $e) {
+            Log::warning('Firebase verifyIdToken failed', ['error' => $e->getMessage()]);
             throw new ApiException('Google token tidak valid', ErrorCode::AuthInvalidToken, 401);
         }
 
-        $payload = $response->json();
         $email = $payload['email'] ?? null;
 
         if (! $email) {
-            throw new ApiException('Google token tidak valid', ErrorCode::AuthInvalidToken, 401);
+            throw new ApiException('Email tidak ditemukan', ErrorCode::AuthInvalidToken, 401);
+        }
+
+        if (! $payload['email_verified']) {
+            throw new ApiException('Email Google belum diverifikasi', ErrorCode::AuthInvalidToken, 401);
         }
 
         $user = User::query()->firstOrCreate(
             ['email' => $email],
             [
-                'name' => $payload['name'] ?? 'Google User',
+                'name' => $payload['name'] ?? $email,
                 'phone' => '08'.substr(md5($email), 0, 10),
                 'password' => bcrypt(str()->random(32)),
                 'role' => 'member',
@@ -177,7 +182,7 @@ class AuthController extends Controller
             $user->update(['device_token' => $data['device_token']]);
         }
 
-        $user->update(['last_login_at' => now()]);
+        $user->update(['last_login_at' => now(), 'is_verified' => true]);
 
         return $this->success([
             'access_token' => $this->jwt->createAccessToken($user),
