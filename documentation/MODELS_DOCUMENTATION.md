@@ -34,4 +34,4 @@ All domain models live in `app/Models/`. UUID models use `HasUuids`; soft delete
 
 Run order in `DatabaseSeeder`: roles → permissions → packages → exercises → FAQ categories → users → memberships → trainer schedules → workout plans → FAQs.
 
-**Default credentials:** `admin@gym.local` / `superadmin@gym.local` — password: `password`
+**Default credentials:** `admin@coregym.id` / `superadmin@coregym.id` — password: `password`

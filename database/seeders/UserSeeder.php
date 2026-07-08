@@ -13,7 +13,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         $superAdmin = User::query()->firstOrCreate(
-            ['email' => 'superadmin@gym.local'],
+            ['email' => 'superadmin@coregym.id'],
             [
                 'name' => 'Super Admin',
                 'phone' => '08100000001',
@@ -25,7 +25,7 @@ class UserSeeder extends Seeder
         );
 
         $admin = User::query()->firstOrCreate(
-            ['email' => 'admin@gym.local'],
+            ['email' => 'admin@coregym.id'],
             [
                 'name' => 'Gym Admin',
                 'phone' => '08100000002',
