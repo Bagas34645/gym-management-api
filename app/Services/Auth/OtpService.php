@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Mail;
 class OtpService
 {
     private const RESEND_LIMIT = 3;
+
     private const RESEND_WINDOW = 3600; // 1 jam
+
     private const MAX_VERIFY_ATTEMPTS = 5;
 
     public function send(string $identifier, string $method): int
@@ -23,10 +25,10 @@ class OtpService
         EmailOtp::updateOrCreate(
             [
                 'identifier' => strtolower(trim($identifier)),
-                'method'     => $method,
+                'method' => $method,
             ],
             [
-                'code_hash'  => Hash::make($code),
+                'code_hash' => Hash::make($code),
                 'expires_at' => now()->addSeconds($ttl),
             ]
         );
@@ -48,7 +50,9 @@ class OtpService
                 }
             }
         } else {
-            Log::info('OTP SMS (dev)', ['identifier' => $identifier, 'code' => $code]);
+            Log::info('OTP SMS requested (dev only — configure SMS provider for production)', [
+                'identifier' => $identifier,
+            ]);
         }
 
         return $ttl;

@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -24,7 +24,7 @@ return new class extends Migration
             $table->index('user_id');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE notification_preferences ADD CONSTRAINT notification_preferences_reminder_days_positive CHECK (reminder_days_before > 0)');
+        SchemaHelper::check('ALTER TABLE notification_preferences ADD CONSTRAINT notification_preferences_reminder_days_positive CHECK (reminder_days_before > 0)');
     }
 
     public function down(): void

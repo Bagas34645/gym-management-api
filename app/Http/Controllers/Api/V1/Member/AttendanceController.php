@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\Controller;
 use App\Models\AttendanceRecord;
 use App\Models\FaceRegistration;
 use App\Services\Face\FaceEmbeddingEncryption;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -40,7 +41,7 @@ class AttendanceController extends Controller
             ['user_id' => $user->id],
             [
                 'face_embedding' => $encrypted,
-                'embedding_vector' => json_encode($result['embedding']),
+                'embedding_vector' => null,
                 'face_image_path' => $path,
                 'registered_at' => now(),
                 'updated_at' => now(),
@@ -150,6 +151,6 @@ class AttendanceController extends Controller
             'verification_status' => $r->verification_status,
         ]);
 
-        return \App\Support\ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
+        return ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
     }
 }

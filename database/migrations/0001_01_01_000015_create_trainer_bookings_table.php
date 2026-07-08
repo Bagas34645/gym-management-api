@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -33,7 +33,7 @@ return new class extends Migration
             $table->index('status');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE trainer_bookings ADD CONSTRAINT trainer_bookings_rating_range CHECK (rating IS NULL OR (rating BETWEEN 1 AND 5))');
+        SchemaHelper::check('ALTER TABLE trainer_bookings ADD CONSTRAINT trainer_bookings_rating_range CHECK (rating IS NULL OR (rating BETWEEN 1 AND 5))');
     }
 
     public function down(): void

@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\V1\Controller;
 use App\Models\Trainer;
 use App\Models\TrainerBooking;
 use App\Models\TrainerSchedule;
-use App\Models\User;
 use App\Models\WorkoutPlan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

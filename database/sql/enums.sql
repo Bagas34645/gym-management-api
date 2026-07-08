@@ -9,7 +9,7 @@ CREATE TYPE user_status AS ENUM ('active', 'inactive', 'suspended');
 -- Membership related
 CREATE TYPE membership_type AS ENUM ('daily', 'weekly', 'monthly', 'yearly');
 CREATE TYPE membership_status AS ENUM ('active', 'inactive', 'expired', 'pending_verification');
-CREATE TYPE payment_method AS ENUM ('transfer', 'cash', 'qris');
+CREATE TYPE payment_method AS ENUM ('transfer', 'cash', 'qris', 'midtrans');
 CREATE TYPE payment_status AS ENUM ('pending', 'completed', 'failed');
 
 -- Attendance
@@ -34,4 +34,4 @@ CREATE TYPE faq_status AS ENUM ('active', 'inactive');
 CREATE TYPE role_status AS ENUM ('active', 'inactive');
 
 -- Renewal
-CREATE TYPE renewal_status AS ENUM ('pending_verification', 'approved', 'rejected');
+CREATE TYPE renewal_status AS ENUM ('pending_verification', 'pending_payment', 'approved', 'rejected');

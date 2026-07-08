@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -16,7 +16,7 @@ return new class extends Migration
             $table->enum('status', ['active', 'inactive', 'expired', 'pending_verification']);
             $table->date('start_date');
             $table->date('end_date');
-            $table->enum('payment_method', ['transfer', 'cash', 'qris']);
+            $table->enum('payment_method', ['transfer', 'cash', 'qris', 'midtrans']);
             $table->enum('payment_status', ['pending', 'completed', 'failed']);
             $table->string('payment_proof_url', 500)->nullable();
             $table->timestamps();
@@ -29,8 +29,8 @@ return new class extends Migration
             $table->index('end_date');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE memberships ADD CONSTRAINT memberships_end_after_start CHECK (end_date > start_date)');
-        \App\Support\SchemaHelper::check("CREATE UNIQUE INDEX memberships_user_active_unique ON memberships (user_id) WHERE status = 'active'");
+        SchemaHelper::check('ALTER TABLE memberships ADD CONSTRAINT memberships_end_after_start CHECK (end_date > start_date)');
+        SchemaHelper::check("CREATE UNIQUE INDEX memberships_user_active_unique ON memberships (user_id) WHERE status = 'active'");
     }
 
     public function down(): void

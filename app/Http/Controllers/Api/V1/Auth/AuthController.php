@@ -148,7 +148,7 @@ class AuthController extends Controller
 
         // Verifikasi ID token Google via Firebase Admin SDK.
         try {
-            $firebase = new FirebaseService();
+            $firebase = new FirebaseService;
             $payload = $firebase->verifyIdToken($data['id_token']);
         } catch (\Throwable $e) {
             Log::warning('Firebase verifyIdToken failed', ['error' => $e->getMessage()]);

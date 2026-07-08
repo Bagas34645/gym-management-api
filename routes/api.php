@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Controllers\Api\V1\Admin\AttendanceAdminController;
 use App\Http\Controllers\Api\V1\Admin\AdminMembershipController;
+use App\Http\Controllers\Api\V1\Admin\AttendanceAdminController;
 use App\Http\Controllers\Api\V1\Admin\ChatAdminController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
 use App\Http\Controllers\Api\V1\Admin\FaceAdminController;
@@ -13,15 +13,18 @@ use App\Http\Controllers\Api\V1\Admin\ReportController;
 use App\Http\Controllers\Api\V1\Admin\TrainerAdminController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\FaqController;
+use App\Http\Controllers\Api\V1\KioskCheckinController;
 use App\Http\Controllers\Api\V1\Member\AttendanceController;
 use App\Http\Controllers\Api\V1\Member\BookingController;
 use App\Http\Controllers\Api\V1\Member\ChatController;
 use App\Http\Controllers\Api\V1\Member\FeedbackController;
 use App\Http\Controllers\Api\V1\Member\MembershipController;
 use App\Http\Controllers\Api\V1\Member\NotificationController;
+use App\Http\Controllers\Api\V1\Member\PaymentController;
 use App\Http\Controllers\Api\V1\Member\ProgressController;
 use App\Http\Controllers\Api\V1\Member\TrainerController;
 use App\Http\Controllers\Api\V1\Member\WorkoutController;
+use App\Http\Controllers\Api\V1\MidtransNotificationController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['rate.headers:5,1'])->group(function () {
@@ -42,6 +45,10 @@ Route::middleware(['rate.headers:5,5'])->group(function () {
 
 Route::post('/auth/refresh', [AuthController::class, 'refresh']);
 
+Route::post('/payments/midtrans/notification', [MidtransNotificationController::class, 'handle']);
+
+Route::middleware(['kiosk.key', 'rate.headers:120,1'])->post('/kiosk/checkin', [KioskCheckinController::class, 'checkin']);
+
 Route::get('/memberships/packages', [MembershipController::class, 'packages']);
 Route::get('/memberships/packages/{id}', [MembershipController::class, 'packageShow']);
 
@@ -56,6 +63,8 @@ Route::middleware(['auth.jwt', 'rate.headers:300,1'])->group(function () {
 
     Route::get('/memberships/active', [MembershipController::class, 'active']);
     Route::post('/memberships/renew', [MembershipController::class, 'renew']);
+    Route::post('/memberships/payments/snap', [PaymentController::class, 'createSnap']);
+    Route::get('/memberships/payments/{orderId}/status', [PaymentController::class, 'status']);
     Route::get('/memberships/history', [MembershipController::class, 'history']);
 
     Route::prefix('attendance')->group(function () {

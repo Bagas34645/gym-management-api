@@ -5,15 +5,18 @@ namespace App\Http\Controllers\Api\V1\Member;
 use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Api\V1\Controller;
-use App\Models\Membership;
 use App\Models\MembershipPackage;
 use App\Models\MembershipRenewal;
+use App\Services\Membership\MembershipRenewalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class MembershipController extends Controller
 {
+    public function __construct(
+        private readonly MembershipRenewalService $renewalService,
+    ) {}
+
     public function active(Request $request): JsonResponse
     {
         $membership = $request->user()->activeMembership?->load('package');
@@ -55,8 +58,7 @@ class MembershipController extends Controller
     {
         $data = $request->validate([
             'package_id' => ['required', 'uuid', 'exists:membership_packages,id'],
-            'payment_method' => ['required', 'in:transfer,cash,qris'],
-            'payment_proof' => ['required_if:payment_method,transfer', 'file', 'max:5120'],
+            'payment_method' => ['required', 'in:cash'],
         ]);
 
         $package = MembershipPackage::query()->where('status', 'active')->find($data['package_id']);
@@ -65,51 +67,12 @@ class MembershipController extends Controller
             throw new ApiException('Paket membership tidak ditemukan atau tidak aktif', ErrorCode::MembershipPackageInvalid, 400);
         }
 
-        $user = $request->user();
-
-        $proofUrl = null;
-        if ($request->hasFile('payment_proof')) {
-            $proofUrl = $request->file('payment_proof')->store('payment-proofs', 'public');
-            $proofUrl = 'storage/'.$proofUrl;
-        }
-
-        $renewal = DB::transaction(function () use ($user, $package, $data, $proofUrl) {
-            $current = $user->activeMembership;
-
-            // First-time activation: there is no membership to renew yet, so
-            // create a pending one. A renewal record requires a membership_id
-            // (non-nullable FK), and admin verification will activate it later.
-            if (! $current) {
-                $start = now();
-                $current = Membership::query()->create([
-                    'user_id' => $user->id,
-                    'package_id' => $package->id,
-                    'status' => 'pending_verification',
-                    'start_date' => $start->toDateString(),
-                    'end_date' => $start->copy()->addDays($package->duration_days)->toDateString(),
-                    'payment_method' => $data['payment_method'],
-                    'payment_status' => 'pending',
-                    'payment_proof_url' => $proofUrl,
-                ]);
-                $previousEnd = $start->toDateString();
-            } else {
-                $previousEnd = $current->end_date->toDateString();
-            }
-
-            $newEnd = now()->parse($previousEnd)->addDays($package->duration_days)->toDateString();
-
-            return MembershipRenewal::query()->create([
-                'membership_id' => $current->id,
-                'user_id' => $user->id,
-                'package_id' => $package->id,
-                'previous_end_date' => $previousEnd,
-                'new_end_date' => $newEnd,
-                'status' => 'pending_verification',
-                'payment_method' => $data['payment_method'],
-                'payment_proof_url' => $proofUrl,
-                'amount_paid' => $package->price,
-            ]);
-        });
+        $renewal = $this->renewalService->createRenewal(
+            $request->user(),
+            $package,
+            'cash',
+            'pending_verification',
+        );
 
         return $this->success([
             'renewal_id' => $renewal->id,
@@ -133,6 +96,7 @@ class MembershipController extends Controller
                 'previous_end_date' => $r->previous_end_date?->format('Y-m-d'),
                 'new_end_date' => $r->new_end_date->format('Y-m-d'),
                 'amount_paid' => (float) $r->amount_paid,
+                'payment_method' => $r->payment_method,
                 'created_at' => $r->created_at?->toIso8601String(),
             ]);
 

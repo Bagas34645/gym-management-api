@@ -4,19 +4,23 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Api\V1\Controller;
-use App\Support\ApiResponse;
 use App\Models\Membership;
 use App\Models\MembershipPackage;
 use App\Models\MembershipRenewal;
 use App\Models\PaymentRecord;
 use App\Models\User;
+use App\Services\Membership\MembershipFulfillmentService;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class AdminMembershipController extends Controller
 {
+    public function __construct(
+        private readonly MembershipFulfillmentService $fulfillmentService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min((int) $request->get('per_page', 20), 100);
@@ -169,43 +173,10 @@ class AdminMembershipController extends Controller
             throw new ApiException('Renewal sudah diproses', null, 400);
         }
 
-        $membership = DB::transaction(function () use ($renewal, $request) {
-            $membership = $renewal->membership;
-
-            // Enforce the "one active membership per user" rule before activating.
-            Membership::query()
-                ->where('user_id', $renewal->user_id)
-                ->where('status', 'active')
-                ->where('id', '!=', $membership->id)
-                ->update(['status' => 'expired']);
-
-            $membership->update([
-                'status' => 'active',
-                'package_id' => $renewal->package_id,
-                'end_date' => $renewal->new_end_date->toDateString(),
-                'payment_method' => $renewal->payment_method,
-                'payment_status' => 'completed',
-            ]);
-
-            $renewal->update([
-                'status' => 'approved',
-                'verified_by' => $request->user()->id,
-                'verified_at' => now(),
-            ]);
-
-            PaymentRecord::query()->create([
-                'user_id' => $renewal->user_id,
-                'membership_id' => $membership->id,
-                'renewal_id' => $renewal->id,
-                'amount' => $renewal->amount_paid,
-                'payment_method' => $renewal->payment_method,
-                'payment_date' => now()->toDateString(),
-                'reference_number' => 'PAY-'.strtoupper(Str::random(10)),
-                'status' => 'completed',
-            ]);
-
-            return $membership;
-        });
+        $membership = $this->fulfillmentService->fulfill(
+            $renewal,
+            verifiedBy: $request->user()->id,
+        );
 
         return $this->success([
             'membership_id' => $membership->id,
@@ -216,7 +187,7 @@ class AdminMembershipController extends Controller
 
     public function rejectRenewal(Request $request, string $id): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -226,23 +197,7 @@ class AdminMembershipController extends Controller
             throw new ApiException('Renewal sudah diproses', null, 400);
         }
 
-        DB::transaction(function () use ($renewal, $request) {
-            $renewal->update([
-                'status' => 'rejected',
-                'verified_by' => $request->user()->id,
-                'verified_at' => now(),
-            ]);
-
-            // If this was a first-time activation, the membership is still
-            // pending — mark it inactive so it doesn't linger unverified.
-            $membership = $renewal->membership;
-            if ($membership && $membership->status === 'pending_verification') {
-                $membership->update([
-                    'status' => 'inactive',
-                    'payment_status' => 'failed',
-                ]);
-            }
-        });
+        $this->fulfillmentService->reject($renewal, verifiedBy: $request->user()->id);
 
         return $this->success(null, 'Renewal ditolak');
     }
@@ -273,6 +228,6 @@ class AdminMembershipController extends Controller
             'status' => $m->status,
         ]);
 
-        return \App\Support\ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
+        return ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
     }
 }

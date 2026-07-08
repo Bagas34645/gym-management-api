@@ -2,7 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\ErrorCode;
 use App\Services\Auth\JwtService;
+use App\Support\ApiResponse;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,9 +18,9 @@ class JwtAuthenticate
         $header = $request->header('Authorization', '');
 
         if (! str_starts_with($header, 'Bearer ')) {
-            return \App\Support\ApiResponse::error(
+            return ApiResponse::error(
                 'Token tidak valid atau sudah kadaluarsa',
-                \App\Enums\ErrorCode::AuthInvalidToken,
+                ErrorCode::AuthInvalidToken,
                 [],
                 401,
             );

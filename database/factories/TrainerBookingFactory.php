@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Models\Trainer;
 use App\Models\TrainerBooking;
-use App\Models\TrainerSchedule;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 

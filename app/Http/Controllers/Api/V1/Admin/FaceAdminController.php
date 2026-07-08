@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Api\V1\Controller;
 use App\Models\FaceRegistration;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -38,7 +39,7 @@ class FaceAdminController extends Controller
             'verified_at' => $r->verified_at?->toIso8601String(),
         ]);
 
-        return \App\Support\ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
+        return ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
     }
 
     public function verify(Request $request, string $id): JsonResponse

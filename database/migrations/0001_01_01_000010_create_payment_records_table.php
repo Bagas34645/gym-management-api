@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -15,7 +15,7 @@ return new class extends Migration
             $table->uuid('membership_id')->nullable();
             $table->uuid('renewal_id')->nullable();
             $table->decimal('amount', 12, 2);
-            $table->enum('payment_method', ['transfer', 'cash', 'qris']);
+            $table->enum('payment_method', ['transfer', 'cash', 'qris', 'midtrans']);
             $table->date('payment_date');
             $table->string('reference_number', 100)->unique();
             $table->enum('status', ['pending', 'completed', 'failed']);
@@ -31,7 +31,7 @@ return new class extends Migration
             $table->index('reference_number');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE payment_records ADD CONSTRAINT payment_records_amount_positive CHECK (amount > 0)');
+        SchemaHelper::check('ALTER TABLE payment_records ADD CONSTRAINT payment_records_amount_positive CHECK (amount > 0)');
     }
 
     public function down(): void

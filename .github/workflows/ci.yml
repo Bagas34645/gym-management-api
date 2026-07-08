@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gym_management_api
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_pgsql, mbstring, xml, ctype, fileinfo, openssl
+          coverage: none
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          mkdir -p storage/app/jwt
+          openssl genrsa -out storage/app/jwt/private.pem 2048
+          openssl rsa -in storage/app/jwt/private.pem -pubout -out storage/app/jwt/public.pem
+      - name: Run tests
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: gym_management_api
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+        run: php artisan test
+      - name: Lint (Pint)
+        run: ./vendor/bin/pint --test

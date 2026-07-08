@@ -13,10 +13,15 @@ class NotificationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $perPage = min((int) $request->get('per_page', 20), 100);
-        $paginator = Notification::query()
+        $query = Notification::query()
             ->where('user_id', $request->user()->id)
-            ->orderByDesc('created_at')
-            ->paginate($perPage);
+            ->orderByDesc('created_at');
+
+        if ($request->boolean('unread_only')) {
+            $query->where('is_read', false);
+        }
+
+        $paginator = $query->paginate($perPage);
 
         return $this->paginated($paginator);
     }
