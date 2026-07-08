@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -28,8 +28,8 @@ return new class extends Migration
             $table->index('status');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE trainers ADD CONSTRAINT trainers_experience_non_negative CHECK (experience_years >= 0)');
-        \App\Support\SchemaHelper::check('ALTER TABLE trainers ADD CONSTRAINT trainers_hourly_rate_positive CHECK (hourly_rate > 0)');
+        SchemaHelper::check('ALTER TABLE trainers ADD CONSTRAINT trainers_experience_non_negative CHECK (experience_years >= 0)');
+        SchemaHelper::check('ALTER TABLE trainers ADD CONSTRAINT trainers_hourly_rate_positive CHECK (hourly_rate > 0)');
     }
 
     public function down(): void

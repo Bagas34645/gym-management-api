@@ -11,9 +11,7 @@ class OtpMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public string $code, public int $ttl)
-    {
-    }
+    public function __construct(public string $code, public int $ttl) {}
 
     public function build()
     {

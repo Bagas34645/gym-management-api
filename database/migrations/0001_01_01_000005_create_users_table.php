@@ -26,7 +26,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
-            
+
             $table->index('email');
             $table->index('phone');
             $table->index('role');

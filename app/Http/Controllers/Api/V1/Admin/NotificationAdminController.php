@@ -7,6 +7,7 @@ use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class NotificationAdminController extends Controller
 {
@@ -20,9 +21,20 @@ class NotificationAdminController extends Controller
             'broadcast' => ['sometimes', 'boolean'],
         ]);
 
-        $users = ! empty($data['user_id'])
-            ? User::query()->where('id', $data['user_id'])->get()
-            : User::query()->where('role', 'member')->where('status', 'active')->get();
+        $broadcast = (bool) ($data['broadcast'] ?? false);
+
+        if ($broadcast) {
+            $users = User::query()
+                ->where('role', 'member')
+                ->where('status', 'active')
+                ->get();
+        } elseif (! empty($data['user_id'])) {
+            $users = User::query()->where('id', $data['user_id'])->get();
+        } else {
+            throw ValidationException::withMessages([
+                'user_id' => ['Pilih anggota atau aktifkan broadcast untuk mengirim ke semua anggota.'],
+            ]);
+        }
 
         foreach ($users as $user) {
             Notification::query()->create([

@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -24,7 +24,7 @@ return new class extends Migration
             $table->index('recorded_at');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE progress_weight ADD CONSTRAINT progress_weight_positive CHECK (weight_kg > 0)');
+        SchemaHelper::check('ALTER TABLE progress_weight ADD CONSTRAINT progress_weight_positive CHECK (weight_kg > 0)');
     }
 
     public function down(): void

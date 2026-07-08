@@ -26,6 +26,7 @@ class MembersImport implements ToCollection, WithHeadingRow
 
             if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $this->errorRows[] = ['row' => $rowNum, 'message' => 'Email invalid'];
+
                 continue;
             }
 
@@ -33,6 +34,7 @@ class MembersImport implements ToCollection, WithHeadingRow
 
             if ($existing && ! $this->overrideExisting) {
                 $this->skipped++;
+
                 continue;
             }
 

@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
-use App\Enums\ErrorCode;
-use App\Exceptions\ApiException;
 use App\Http\Controllers\Api\V1\Controller;
 use App\Imports\MembersImport;
 use App\Models\User;
+use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -46,7 +45,7 @@ class MemberController extends Controller
             'expired_date' => $u->activeMembership?->end_date?->format('Y-m-d'),
         ]);
 
-        return \App\Support\ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
+        return ApiResponse::paginated($data, $paginator->currentPage(), $paginator->perPage(), $paginator->total());
     }
 
     public function store(Request $request): JsonResponse

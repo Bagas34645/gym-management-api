@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
 use App\Http\Middleware\AddRateLimitHeaders;
+use App\Http\Middleware\EnsureKioskApiKey;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\ForceJsonResponse;
 use App\Http\Middleware\JwtAuthenticate;
@@ -31,10 +33,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.jwt' => JwtAuthenticate::class,
             'role' => EnsureRole::class,
+            'kiosk.key' => EnsureKioskApiKey::class,
             'rate.headers' => AddRateLimitHeaders::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontReport([
+            ApiException::class,
+        ]);
+
         $exceptions->render(function (ApiException $e, Request $request) {
             if ($request->is('v1/*') || $request->expectsJson()) {
                 return ApiResponse::error(
@@ -60,7 +67,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (AuthenticationException $e, Request $request) {
             if ($request->is('v1/*') || $request->expectsJson()) {
-                return ApiResponse::error('Unauthorized', \App\Enums\ErrorCode::AuthInvalidToken, [], 401);
+                return ApiResponse::error('Unauthorized', ErrorCode::AuthInvalidToken, [], 401);
             }
         });
 

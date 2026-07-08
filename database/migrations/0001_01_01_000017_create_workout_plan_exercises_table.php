@@ -1,8 +1,8 @@
 <?php
 
+use App\Support\SchemaHelper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -28,8 +28,8 @@ return new class extends Migration
             $table->index('exercise_id');
         });
 
-        \App\Support\SchemaHelper::check('ALTER TABLE workout_plan_exercises ADD CONSTRAINT workout_plan_exercises_sets_positive CHECK (sets > 0)');
-        \App\Support\SchemaHelper::check('ALTER TABLE workout_plan_exercises ADD CONSTRAINT workout_plan_exercises_reps_positive CHECK (reps > 0)');
+        SchemaHelper::check('ALTER TABLE workout_plan_exercises ADD CONSTRAINT workout_plan_exercises_sets_positive CHECK (sets > 0)');
+        SchemaHelper::check('ALTER TABLE workout_plan_exercises ADD CONSTRAINT workout_plan_exercises_reps_positive CHECK (reps > 0)');
     }
 
     public function down(): void

@@ -5,6 +5,7 @@ namespace App\Services\Face;
 use App\Contracts\FaceRecognitionInterface;
 use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 
@@ -37,11 +38,7 @@ class FaceRecognitionClient implements FaceRecognitionInterface
                 'embedding' => json_encode($storedEmbedding),
             ]);
 
-        if (! $response->successful()) {
-            throw new ApiException('Layanan face recognition tidak tersedia', ErrorCode::FaceBadQuality, 503);
-        }
-
-        $body = $response->json();
+        $body = $this->parseResponse($response);
 
         return [
             'matched' => (bool) ($body['data']['matched'] ?? false),
@@ -58,11 +55,7 @@ class FaceRecognitionClient implements FaceRecognitionInterface
                 'candidates' => json_encode($candidates),
             ]);
 
-        if (! $response->successful()) {
-            throw new ApiException('Layanan face recognition tidak tersedia', ErrorCode::FaceBadQuality, 503);
-        }
-
-        $body = $response->json();
+        $body = $this->parseResponse($response);
 
         return [
             'matched' => (bool) ($body['data']['matched'] ?? false),
@@ -78,10 +71,32 @@ class FaceRecognitionClient implements FaceRecognitionInterface
             ->attach('face_image', file_get_contents($image->getRealPath()), $image->getClientOriginalName())
             ->post(config('gym.face_api_url').$path);
 
-        if (! $response->successful()) {
-            throw new ApiException('Layanan face recognition tidak tersedia', ErrorCode::FaceBadQuality, 503);
+        return $this->parseResponse($response);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function parseResponse(Response $response): array
+    {
+        $body = $response->json() ?? [];
+
+        if ($response->successful()) {
+            return is_array($body) ? $body : [];
         }
 
-        return $response->json();
+        if ($response->status() === 400) {
+            throw new ApiException(
+                $body['message'] ?? 'Gambar wajah tidak dapat diproses',
+                ErrorCode::FaceBadQuality,
+                400,
+            );
+        }
+
+        throw new ApiException(
+            'Layanan face recognition tidak tersedia',
+            ErrorCode::FaceBadQuality,
+            503,
+        );
     }
 }

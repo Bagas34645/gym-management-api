@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class MembershipRenewal extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes;
 
     public $incrementing = false;
 
@@ -26,6 +27,10 @@ class MembershipRenewal extends Model
         'payment_method',
         'payment_proof_url',
         'amount_paid',
+        'midtrans_order_id',
+        'midtrans_transaction_id',
+        'midtrans_transaction_status',
+        'midtrans_raw_response',
         'verified_by',
         'verified_at',
     ];
@@ -36,6 +41,7 @@ class MembershipRenewal extends Model
             'previous_end_date' => 'date',
             'new_end_date' => 'date',
             'amount_paid' => 'decimal:2',
+            'midtrans_raw_response' => 'array',
             'verified_at' => 'datetime',
         ];
     }
