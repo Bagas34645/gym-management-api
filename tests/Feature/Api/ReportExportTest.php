@@ -97,6 +97,52 @@ it('exports finance report as excel with payment data', function () {
     expect(Storage::disk('public')->size($relativePath))->toBeGreaterThan(100);
 });
 
+it('exports attendance report as pdf with attendance data', function () {
+    $token = adminToken();
+    $member = User::factory()->create(['role' => 'member', 'name' => 'Andi Wijaya']);
+
+    AttendanceRecord::query()->create([
+        'user_id' => $member->id,
+        'check_in_time' => now(),
+        'check_out_time' => now()->addHour(),
+        'location' => 'Main Entrance',
+        'verification_status' => 'verified',
+    ]);
+
+    $response = $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/v1/admin/reports/export?report_type=attendance&format=pdf');
+
+    $response->assertOk()
+        ->assertJsonPath('success', true);
+
+    $downloadUrl = $response->json('data.download_url');
+    expect($downloadUrl)->toContain('.pdf');
+
+    $relativePath = str_replace('/storage/', '', parse_url($downloadUrl, PHP_URL_PATH));
+    Storage::disk('public')->assertExists($relativePath);
+    expect(strlen(Storage::disk('public')->get($relativePath)))->toBeGreaterThan(1000);
+});
+
+it('exports large attendance pdf by truncating detail rows', function () {
+    $token = adminToken();
+    $member = User::factory()->create(['role' => 'member']);
+
+    for ($i = 0; $i < 300; $i++) {
+        AttendanceRecord::query()->create([
+            'user_id' => $member->id,
+            'check_in_time' => now()->subMinutes($i),
+            'location' => 'Main Entrance',
+            'verification_status' => 'verified',
+        ]);
+    }
+
+    $response = $this->withHeader('Authorization', 'Bearer '.$token)
+        ->getJson('/v1/admin/reports/export?report_type=attendance&format=pdf');
+
+    $response->assertOk()
+        ->assertJsonPath('success', true);
+});
+
 it('exports members and attendance reports', function () {
     $token = adminToken();
     $member = User::factory()->create(['role' => 'member']);

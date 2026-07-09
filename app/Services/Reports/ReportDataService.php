@@ -5,10 +5,13 @@ namespace App\Services\Reports;
 use App\Models\AttendanceRecord;
 use App\Models\PaymentRecord;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class ReportDataService
 {
+    public const PDF_DETAIL_LIMIT = 250;
+
     public const PAYMENT_METHOD_LABELS = [
         'transfer' => 'Transfer',
         'cash' => 'Tunai',
@@ -25,17 +28,12 @@ class ReportDataService
             ->orderBy('name')
             ->get();
 
-        $timeline = User::query()
-            ->where('role', 'member')
-            ->whereBetween('created_at', [$from, $to.' 23:59:59'])
-            ->selectRaw('DATE(created_at) as date, count(*) as value')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get()
-            ->map(fn ($row) => [
-                'date' => (string) $row->date,
-                'value' => (int) $row->value,
-            ]);
+        $timeline = $this->countTimeline(
+            User::query()
+                ->where('role', 'member')
+                ->whereBetween('created_at', [$from, $to.' 23:59:59']),
+            'created_at',
+        );
 
         return [
             'from' => $from,
@@ -54,16 +52,11 @@ class ReportDataService
             ->orderByDesc('check_in_time')
             ->get();
 
-        $timeline = AttendanceRecord::query()
-            ->whereBetween('check_in_time', [$from, $to.' 23:59:59'])
-            ->selectRaw('DATE(check_in_time) as date, count(*) as value')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get()
-            ->map(fn ($row) => [
-                'date' => (string) $row->date,
-                'value' => (int) $row->value,
-            ]);
+        $timeline = $this->countTimeline(
+            AttendanceRecord::query()
+                ->whereBetween('check_in_time', [$from, $to.' 23:59:59']),
+            'check_in_time',
+        );
 
         return [
             'from' => $from,
@@ -228,12 +221,64 @@ class ReportDataService
         return 'Rp '.number_format($amount, 0, ',', '.');
     }
 
-    private function paymentDateExpression(): string
+    public function prepareForPdf(string $type, array $report): array
+    {
+        return match ($type) {
+            'members' => $this->limitDetailCollection($report, 'members'),
+            'attendance' => $this->limitDetailCollection($report, 'records'),
+            'finance' => $this->limitDetailCollection($report, 'payments'),
+            default => $report,
+        };
+    }
+
+    private function limitDetailCollection(array $report, string $key): array
+    {
+        $items = $report[$key] ?? collect();
+
+        if (! $items instanceof Collection) {
+            return $report;
+        }
+
+        $total = $items->count();
+
+        if ($total <= self::PDF_DETAIL_LIMIT) {
+            return $report;
+        }
+
+        $report[$key] = $items->take(self::PDF_DETAIL_LIMIT)->values();
+        $report['detail_truncated'] = true;
+        $report['detail_shown'] = self::PDF_DETAIL_LIMIT;
+        $report['detail_total'] = $total;
+
+        return $report;
+    }
+
+    private function countTimeline($query, string $column): Collection
+    {
+        $dateExpression = $this->dateColumnExpression($column);
+
+        return $query
+            ->selectRaw("{$dateExpression} as date, count(*) as value")
+            ->groupByRaw($dateExpression)
+            ->orderByRaw($dateExpression)
+            ->get()
+            ->map(fn ($row) => [
+                'date' => (string) $row->date,
+                'value' => (int) $row->value,
+            ]);
+    }
+
+    private function dateColumnExpression(string $column): string
     {
         $driver = DB::connection()->getDriverName();
 
         return $driver === 'pgsql'
-            ? '(payment_date)::date'
-            : 'DATE(payment_date)';
+            ? "({$column})::date"
+            : "DATE({$column})";
+    }
+
+    private function paymentDateExpression(): string
+    {
+        return $this->dateColumnExpression('payment_date');
     }
 }
