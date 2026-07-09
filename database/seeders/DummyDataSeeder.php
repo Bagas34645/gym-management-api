@@ -344,21 +344,34 @@ class DummyDataSeeder extends Seeder
             return;
         }
 
-        $bookedSlots = [];
+        $bookedSlots = TrainerBooking::query()
+            ->get(['trainer_id', 'schedule_id', 'session_date'])
+            ->mapWithKeys(function (TrainerBooking $booking) {
+                $date = Carbon::parse($booking->session_date)->toDateString();
+
+                return ["{$booking->trainer_id}-{$booking->schedule_id}-{$date}" => true];
+            })
+            ->all();
 
         foreach ($members->shuffle()->take(40) as $member) {
             $sessionCount = fake()->numberBetween(2, 8);
+            $created = 0;
+            $attempts = 0;
+            $maxAttempts = $sessionCount * 15;
 
-            for ($i = 0; $i < $sessionCount; $i++) {
+            while ($created < $sessionCount && $attempts < $maxAttempts) {
+                $attempts++;
+
                 $trainer = $trainers->random();
                 $schedule = $trainer->schedules->random();
                 $daysAgo = fake()->numberBetween(-14, 90);
-                $sessionDate = now()->subDays($daysAgo);
-                $slotKey = "{$trainer->id}-{$schedule->id}-{$sessionDate->toDateString()}";
+                $sessionDate = now()->subDays($daysAgo)->toDateString();
+                $slotKey = "{$trainer->id}-{$schedule->id}-{$sessionDate}";
 
                 if (isset($bookedSlots[$slotKey])) {
                     continue;
                 }
+
                 $bookedSlots[$slotKey] = true;
 
                 $isPast = $daysAgo > 0;
@@ -373,7 +386,7 @@ class DummyDataSeeder extends Seeder
                     'user_id' => $member->id,
                     'trainer_id' => $trainer->id,
                     'schedule_id' => $schedule->id,
-                    'session_date' => $sessionDate->toDateString(),
+                    'session_date' => $sessionDate,
                     'start_time' => $schedule->start_time,
                     'end_time' => $schedule->end_time,
                     'status' => $status,
@@ -383,6 +396,8 @@ class DummyDataSeeder extends Seeder
                         : null,
                     'cancelled_at' => $status === 'cancelled' ? $sessionDate : null,
                 ]);
+
+                $created++;
             }
         }
     }
