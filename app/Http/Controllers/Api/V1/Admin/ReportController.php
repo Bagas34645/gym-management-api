@@ -11,6 +11,7 @@ use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class ReportController extends Controller
@@ -96,21 +97,30 @@ class ReportController extends Controller
         $byMethod = PaymentRecord::query()
             ->where('status', 'completed')
             ->whereBetween('payment_date', [$from, $to])
-            ->selectRaw('payment_method, sum(amount) as revenue')
+            ->select('payment_method')
+            ->selectRaw('SUM(amount) as revenue')
             ->groupBy('payment_method')
-            ->pluck('revenue', 'payment_method');
+            ->get()
+            ->mapWithKeys(fn ($row) => [(string) $row->payment_method => (float) $row->revenue]);
+
+        $dateExpression = $this->paymentDateExpression();
 
         $timeline = PaymentRecord::query()
             ->where('status', 'completed')
             ->whereBetween('payment_date', [$from, $to])
-            ->selectRaw('payment_date as date, sum(amount) as revenue')
-            ->groupBy('payment_date')
-            ->orderBy('payment_date')
-            ->get();
+            ->selectRaw("{$dateExpression} as date, SUM(amount) as revenue")
+            ->groupByRaw($dateExpression)
+            ->orderByRaw($dateExpression)
+            ->get()
+            ->map(fn ($row) => [
+                'date' => (string) $row->date,
+                'revenue' => (float) $row->revenue,
+            ])
+            ->values();
 
         return $this->success([
             'total_revenue' => $total,
-            'by_payment_method' => $byMethod,
+            'by_payment_method' => $byMethod->all(),
             'timeline' => $timeline,
         ]);
     }
@@ -156,5 +166,14 @@ class ReportController extends Controller
             'expires_at' => now()->addHour()->toIso8601String(),
             'file_size_kb' => (int) (filesize($fullPath) / 1024),
         ]);
+    }
+
+    private function paymentDateExpression(): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        return $driver === 'pgsql'
+            ? '(payment_date)::date'
+            : 'DATE(payment_date)';
     }
 }
