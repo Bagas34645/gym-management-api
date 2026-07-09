@@ -6,8 +6,11 @@ use App\Http\Controllers\Api\V1\Controller;
 use App\Models\AttendanceRecord;
 use App\Models\PaymentRecord;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -68,26 +71,27 @@ class DashboardController extends Controller
         $groupBy = $data['group_by'] ?? 'day';
 
         $timeline = match ($data['metric']) {
-            'members' => User::query()
-                ->where('role', 'member')
-                ->where('created_at', '>=', $from)
-                ->selectRaw('DATE(created_at) as date, count(*) as value')
-                ->groupBy('date')
-                ->orderBy('date')
-                ->get(),
-            'attendance' => AttendanceRecord::query()
-                ->where('check_in_time', '>=', $from)
-                ->selectRaw('DATE(check_in_time) as date, count(*) as value')
-                ->groupBy('date')
-                ->orderBy('date')
-                ->get(),
-            'revenue' => PaymentRecord::query()
-                ->where('payment_date', '>=', $from->toDateString())
-                ->where('status', 'completed')
-                ->selectRaw('payment_date as date, sum(amount) as value')
-                ->groupBy('payment_date')
-                ->orderBy('payment_date')
-                ->get(),
+            'members' => $this->aggregateTimeline(
+                User::query()
+                    ->where('role', 'member')
+                    ->where('created_at', '>=', $from),
+                'created_at',
+                $groupBy,
+            ),
+            'attendance' => $this->aggregateTimeline(
+                AttendanceRecord::query()
+                    ->where('check_in_time', '>=', $from),
+                'check_in_time',
+                $groupBy,
+            ),
+            'revenue' => $this->aggregateTimeline(
+                PaymentRecord::query()
+                    ->where('payment_date', '>=', $from->toDateString())
+                    ->where('status', 'completed'),
+                'payment_date',
+                $groupBy,
+                true,
+            ),
         };
 
         return $this->success([
@@ -96,5 +100,44 @@ class DashboardController extends Controller
             'group_by' => $groupBy,
             'timeline' => $timeline,
         ]);
+    }
+
+    /**
+     * @param  Builder  $query
+     * @return Collection<int, object{date: string, value: float|int}>
+     */
+    private function aggregateTimeline($query, string $column, string $groupBy, bool $sum = false): Collection
+    {
+        $aggregate = $sum ? 'sum(amount)' : 'count(*)';
+        $dateExpression = $this->dateBucketExpression($column, $groupBy);
+
+        return $query
+            ->selectRaw("{$dateExpression} as date, {$aggregate} as value")
+            ->groupByRaw($dateExpression)
+            ->orderByRaw($dateExpression)
+            ->get()
+            ->map(fn ($row) => [
+                'date' => (string) $row->date,
+                'value' => $sum ? (float) $row->value : (int) $row->value,
+            ]);
+    }
+
+    private function dateBucketExpression(string $column, string $groupBy): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            return match ($groupBy) {
+                'week' => "DATE_TRUNC('week', {$column})::date",
+                'month' => "DATE_TRUNC('month', {$column})::date",
+                default => "({$column})::date",
+            };
+        }
+
+        return match ($groupBy) {
+            'week' => "DATE(DATE_SUB({$column}, INTERVAL WEEKDAY({$column}) DAY))",
+            'month' => "DATE_FORMAT({$column}, '%Y-%m-01')",
+            default => "DATE({$column})",
+        };
     }
 }
