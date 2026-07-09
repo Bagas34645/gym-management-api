@@ -26,7 +26,25 @@ class ReportController extends Controller
             ->with('activeMembership.package')
             ->get();
 
-        return $this->success(['from' => $from, 'to' => $to, 'total' => $members->count(), 'members' => $members]);
+        $timeline = User::query()
+            ->where('role', 'member')
+            ->whereBetween('created_at', [$from, $to.' 23:59:59'])
+            ->selectRaw('DATE(created_at) as date, count(*) as value')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->map(fn ($row) => [
+                'date' => (string) $row->date,
+                'value' => (int) $row->value,
+            ]);
+
+        return $this->success([
+            'from' => $from,
+            'to' => $to,
+            'total' => $members->count(),
+            'members' => $members,
+            'timeline' => $timeline,
+        ]);
     }
 
     public function attendance(Request $request): JsonResponse
@@ -40,7 +58,24 @@ class ReportController extends Controller
             ->orderByDesc('check_in_time')
             ->get();
 
-        return $this->success(['from' => $from, 'to' => $to, 'total' => $records->count(), 'records' => $records]);
+        $timeline = AttendanceRecord::query()
+            ->whereBetween('check_in_time', [$from, $to.' 23:59:59'])
+            ->selectRaw('DATE(check_in_time) as date, count(*) as value')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->map(fn ($row) => [
+                'date' => (string) $row->date,
+                'value' => (int) $row->value,
+            ]);
+
+        return $this->success([
+            'from' => $from,
+            'to' => $to,
+            'total' => $records->count(),
+            'records' => $records,
+            'timeline' => $timeline,
+        ]);
     }
 
     public function finance(Request $request): JsonResponse
