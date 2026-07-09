@@ -4,47 +4,32 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
+use App\Exports\ReportExport;
 use App\Http\Controllers\Api\V1\Controller;
-use App\Models\AttendanceRecord;
-use App\Models\PaymentRecord;
-use App\Models\User;
+use App\Services\Reports\ReportDataService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ReportController extends Controller
 {
+    public function __construct(private readonly ReportDataService $reportData) {}
+
     public function members(Request $request): JsonResponse
     {
         $from = $request->get('from', now()->startOfMonth()->toDateString());
         $to = $request->get('to', now()->toDateString());
 
-        $members = User::query()
-            ->where('role', 'member')
-            ->whereBetween('created_at', [$from, $to])
-            ->with('activeMembership.package')
-            ->get();
-
-        $timeline = User::query()
-            ->where('role', 'member')
-            ->whereBetween('created_at', [$from, $to.' 23:59:59'])
-            ->selectRaw('DATE(created_at) as date, count(*) as value')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get()
-            ->map(fn ($row) => [
-                'date' => (string) $row->date,
-                'value' => (int) $row->value,
-            ]);
+        $report = $this->reportData->membersReport($from, $to);
 
         return $this->success([
-            'from' => $from,
-            'to' => $to,
-            'total' => $members->count(),
-            'members' => $members,
-            'timeline' => $timeline,
+            'from' => $report['from'],
+            'to' => $report['to'],
+            'total' => $report['total'],
+            'members' => $report['members'],
+            'timeline' => $report['timeline'],
         ]);
     }
 
@@ -53,29 +38,14 @@ class ReportController extends Controller
         $from = $request->get('from', now()->startOfMonth()->toDateString());
         $to = $request->get('to', now()->toDateString());
 
-        $records = AttendanceRecord::query()
-            ->with('user:id,name')
-            ->whereBetween('check_in_time', [$from, $to.' 23:59:59'])
-            ->orderByDesc('check_in_time')
-            ->get();
-
-        $timeline = AttendanceRecord::query()
-            ->whereBetween('check_in_time', [$from, $to.' 23:59:59'])
-            ->selectRaw('DATE(check_in_time) as date, count(*) as value')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get()
-            ->map(fn ($row) => [
-                'date' => (string) $row->date,
-                'value' => (int) $row->value,
-            ]);
+        $report = $this->reportData->attendanceReport($from, $to);
 
         return $this->success([
-            'from' => $from,
-            'to' => $to,
-            'total' => $records->count(),
-            'records' => $records,
-            'timeline' => $timeline,
+            'from' => $report['from'],
+            'to' => $report['to'],
+            'total' => $report['total'],
+            'records' => $report['records'],
+            'timeline' => $report['timeline'],
         ]);
     }
 
@@ -84,44 +54,31 @@ class ReportController extends Controller
         $from = $request->get('from', now()->startOfMonth()->toDateString());
         $to = $request->get('to', now()->toDateString());
 
-        $query = PaymentRecord::query()
-            ->where('status', 'completed')
-            ->whereBetween('payment_date', [$from, $to]);
+        $report = $this->reportData->financeReport($from, $to);
 
         if ($method = $request->get('payment_method')) {
-            $query->where('payment_method', $method);
+            $report['by_payment_method'] = collect($report['by_payment_method'])
+                ->only([$method])
+                ->all();
+            $report['payments'] = $report['payments']
+                ->where('payment_method', $method)
+                ->values();
+            $report['total_revenue'] = (float) collect($report['by_payment_method'])->sum();
+            $report['timeline'] = $report['payments']
+                ->groupBy(fn ($payment) => $payment->payment_date?->toDateString())
+                ->map(fn ($group, $date) => [
+                    'date' => (string) $date,
+                    'revenue' => (float) $group->sum('amount'),
+                ])
+                ->sortKeys()
+                ->values()
+                ->all();
         }
 
-        $total = (float) $query->sum('amount');
-
-        $byMethod = PaymentRecord::query()
-            ->where('status', 'completed')
-            ->whereBetween('payment_date', [$from, $to])
-            ->select('payment_method')
-            ->selectRaw('SUM(amount) as revenue')
-            ->groupBy('payment_method')
-            ->get()
-            ->mapWithKeys(fn ($row) => [(string) $row->payment_method => (float) $row->revenue]);
-
-        $dateExpression = $this->paymentDateExpression();
-
-        $timeline = PaymentRecord::query()
-            ->where('status', 'completed')
-            ->whereBetween('payment_date', [$from, $to])
-            ->selectRaw("{$dateExpression} as date, SUM(amount) as revenue")
-            ->groupByRaw($dateExpression)
-            ->orderByRaw($dateExpression)
-            ->get()
-            ->map(fn ($row) => [
-                'date' => (string) $row->date,
-                'revenue' => (float) $row->revenue,
-            ])
-            ->values();
-
         return $this->success([
-            'total_revenue' => $total,
-            'by_payment_method' => $byMethod->all(),
-            'timeline' => $timeline,
+            'total_revenue' => $report['total_revenue'],
+            'by_payment_method' => $report['by_payment_method'],
+            'timeline' => $report['timeline'],
         ]);
     }
 
@@ -141,22 +98,45 @@ class ReportController extends Controller
             throw new ApiException('Rentang tanggal tidak valid untuk laporan', ErrorCode::ReportInvalidRange, 400);
         }
 
+        $report = match ($data['report_type']) {
+            'members' => $this->reportData->membersReport($from, $to),
+            'attendance' => $this->reportData->attendanceReport($from, $to),
+            'finance' => $this->reportData->financeReport($from, $to),
+        };
+
         $filename = "report-{$data['report_type']}-".now()->format('Y-m-d-His');
         $path = "exports/{$filename}";
 
         if ($data['format'] === 'pdf') {
-            $html = view('reports.generic', [
-                'title' => ucfirst($data['report_type']).' Report',
-                'from' => $from,
-                'to' => $to,
+            $view = match ($data['report_type']) {
+                'members' => 'reports.members',
+                'attendance' => 'reports.attendance',
+                'finance' => 'reports.finance',
+            };
+
+            $html = view($view, [
+                'report' => $report,
+                'formatter' => $this->reportData,
             ])->render();
+
             $pdf = Pdf::loadHTML($html);
             Storage::disk('public')->put("{$path}.pdf", $pdf->output());
             $path .= '.pdf';
         } else {
-            $content = "Report,{$data['report_type']}\nFrom,{$from}\nTo,{$to}\n";
-            Storage::disk('public')->put("{$path}.csv", $content);
-            $path .= '.csv';
+            $rows = match ($data['report_type']) {
+                'members' => $this->reportData->membersExcelRows($report),
+                'attendance' => $this->reportData->attendanceExcelRows($report),
+                'finance' => $this->reportData->financeExcelRows($report),
+            };
+
+            $sheetTitle = match ($data['report_type']) {
+                'members' => 'Anggota',
+                'attendance' => 'Absensi',
+                'finance' => 'Keuangan',
+            };
+
+            Excel::store(new ReportExport($rows, $sheetTitle), "{$path}.xlsx", 'public');
+            $path .= '.xlsx';
         }
 
         $fullPath = Storage::disk('public')->path($path);
@@ -166,14 +146,5 @@ class ReportController extends Controller
             'expires_at' => now()->addHour()->toIso8601String(),
             'file_size_kb' => (int) (filesize($fullPath) / 1024),
         ]);
-    }
-
-    private function paymentDateExpression(): string
-    {
-        $driver = DB::connection()->getDriverName();
-
-        return $driver === 'pgsql'
-            ? '(payment_date)::date'
-            : 'DATE(payment_date)';
     }
 }
