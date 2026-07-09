@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             TrainerScheduleSeeder::class,
             WorkoutPlanSeeder::class,
             FaqSeeder::class,
+            DummyDataSeeder::class,
         ]);
     }
 }

@@ -6,9 +6,12 @@ use App\Http\Controllers\Api\V1\Controller;
 use App\Models\Trainer;
 use App\Models\TrainerBooking;
 use App\Models\TrainerSchedule;
+use App\Models\User;
 use App\Models\WorkoutPlan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class TrainerAdminController extends Controller
 {
@@ -22,7 +25,9 @@ class TrainerAdminController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'user_id' => ['required', 'uuid', 'exists:users,id', 'unique:trainers,user_id'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'unique:users,email'],
+            'phone' => ['nullable', 'regex:/^08\d{8,11}$/', 'unique:users,phone'],
             'specialization' => ['required', 'string'],
             'experience_years' => ['required', 'integer', 'min:0'],
             'certification' => ['nullable', 'string'],
@@ -30,7 +35,24 @@ class TrainerAdminController extends Controller
             'hourly_rate' => ['required', 'numeric', 'min:0'],
         ]);
 
-        $trainer = Trainer::query()->create([...$data, 'status' => 'active']);
+        $user = User::query()->create([
+            'name' => $data['name'],
+            'email' => $data['email'] ?? $this->generateUniqueTrainerEmail(),
+            'phone' => $data['phone'] ?? $this->generateUniqueTrainerPhone(),
+            'password' => Hash::make(Str::random(16)),
+            'role' => 'member',
+            'status' => 'active',
+        ]);
+
+        $trainer = Trainer::query()->create([
+            'user_id' => $user->id,
+            'specialization' => $data['specialization'],
+            'experience_years' => $data['experience_years'],
+            'certification' => $data['certification'] ?? null,
+            'bio' => $data['bio'] ?? null,
+            'hourly_rate' => $data['hourly_rate'],
+            'status' => 'active',
+        ]);
 
         return $this->success($trainer->load('user'), 'Trainer berhasil ditambahkan', null, 201);
     }
@@ -39,6 +61,7 @@ class TrainerAdminController extends Controller
     {
         $trainer = Trainer::query()->findOrFail($id);
         $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
             'specialization' => ['sometimes', 'string'],
             'experience_years' => ['sometimes', 'integer'],
             'certification' => ['nullable', 'string'],
@@ -47,9 +70,14 @@ class TrainerAdminController extends Controller
             'status' => ['sometimes', 'in:active,inactive'],
         ]);
 
+        if (isset($data['name'])) {
+            $trainer->user()->update(['name' => $data['name']]);
+            unset($data['name']);
+        }
+
         $trainer->update($data);
 
-        return $this->success($trainer, 'Trainer berhasil diperbarui');
+        return $this->success($trainer->load('user'), 'Trainer berhasil diperbarui');
     }
 
     public function destroy(string $id): JsonResponse
@@ -117,5 +145,23 @@ class TrainerAdminController extends Controller
         ]);
 
         return $this->success($plan, 'Program latihan berhasil dibuat', null, 201);
+    }
+
+    private function generateUniqueTrainerEmail(): string
+    {
+        do {
+            $email = 'trainer-'.Str::uuid().'@trainer.local';
+        } while (User::query()->where('email', $email)->exists());
+
+        return $email;
+    }
+
+    private function generateUniqueTrainerPhone(): string
+    {
+        do {
+            $phone = '08'.str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
+        } while (User::query()->where('phone', $phone)->exists());
+
+        return $phone;
     }
 }
