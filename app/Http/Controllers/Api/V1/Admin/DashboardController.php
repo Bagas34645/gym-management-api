@@ -6,8 +6,10 @@ use App\Http\Controllers\Api\V1\Controller;
 use App\Models\AttendanceRecord;
 use App\Models\PaymentRecord;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
@@ -101,10 +103,10 @@ class DashboardController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Support\Collection<int, object{date: string, value: float|int}>
+     * @param  Builder  $query
+     * @return Collection<int, object{date: string, value: float|int}>
      */
-    private function aggregateTimeline($query, string $column, string $groupBy, bool $sum = false): \Illuminate\Support\Collection
+    private function aggregateTimeline($query, string $column, string $groupBy, bool $sum = false): Collection
     {
         $aggregate = $sum ? 'sum(amount)' : 'count(*)';
         $dateExpression = $this->dateBucketExpression($column, $groupBy);

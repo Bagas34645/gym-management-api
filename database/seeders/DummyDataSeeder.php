@@ -14,6 +14,7 @@ use App\Models\TrainerBooking;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class DummyDataSeeder extends Seeder
@@ -72,9 +73,9 @@ class DummyDataSeeder extends Seeder
         $this->command?->info('Dummy data seeding complete.');
     }
 
-  /**
-   * @return list<User>
-   */
+    /**
+     * @return list<User>
+     */
     private function seedMembers(): array
     {
         $members = [];
@@ -120,7 +121,7 @@ class DummyDataSeeder extends Seeder
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, User>  $members
+     * @param  Collection<int, User>  $members
      * @return list<Membership>
      */
     private function seedMemberships($members): array
@@ -276,7 +277,7 @@ class DummyDataSeeder extends Seeder
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, User>  $members
+     * @param  Collection<int, User>  $members
      */
     private function seedAttendance($members): void
     {
@@ -332,7 +333,7 @@ class DummyDataSeeder extends Seeder
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, User>  $members
+     * @param  Collection<int, User>  $members
      */
     private function seedTrainerBookings($members): void
     {
@@ -453,7 +454,7 @@ class DummyDataSeeder extends Seeder
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, User>  $members
+     * @param  Collection<int, User>  $members
      */
     private function seedFeedback($members): void
     {
