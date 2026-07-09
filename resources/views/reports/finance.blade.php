@@ -84,4 +84,5 @@
             @endforelse
         </tbody>
     </table>
+    @include('reports.partials.truncation-notice')
 @endsection

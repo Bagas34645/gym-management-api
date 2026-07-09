@@ -114,12 +114,16 @@ class ReportController extends Controller
                 'finance' => 'reports.finance',
             };
 
-            $html = view($view, [
-                'report' => $report,
-                'formatter' => $this->reportData,
-            ])->render();
+            $pdfReport = $this->reportData->prepareForPdf($data['report_type'], $report);
 
-            $pdf = Pdf::loadHTML($html);
+            @ini_set('memory_limit', '512M');
+
+            $pdf = Pdf::loadView($view, [
+                'report' => $pdfReport,
+                'formatter' => $this->reportData,
+            ])
+                ->setPaper('a4', 'landscape');
+
             Storage::disk('public')->put("{$path}.pdf", $pdf->output());
             $path .= '.pdf';
         } else {

@@ -49,6 +49,12 @@
         .text-right {
             text-align: right;
         }
+
+        .notice {
+            margin-top: 8px;
+            color: #666;
+            font-size: 10px;
+        }
     </style>
 </head>
 <body>
