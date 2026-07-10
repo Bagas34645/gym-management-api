@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Events\MessageSent;
 use App\Http\Controllers\Api\V1\Controller;
+
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
@@ -44,6 +46,8 @@ class ChatAdminController extends Controller
             'is_read' => false,
             'created_at' => now(),
         ]);
+
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
 
         $conversation->update(['admin_id' => $request->user()->id]);
         $conversation->touch();

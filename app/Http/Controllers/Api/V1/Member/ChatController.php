@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Member;
 
+use App\Events\MessageSent;
 use App\Http\Controllers\Api\V1\Controller;
+
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
@@ -34,13 +36,15 @@ class ChatController extends Controller
             'status' => 'open',
         ]);
 
-        ChatMessage::query()->create([
+        $message = ChatMessage::query()->create([
             'conversation_id' => $conversation->id,
             'sender_id' => $request->user()->id,
             'message' => $data['message'],
             'is_read' => false,
             'created_at' => now(),
         ]);
+
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
 
         return $this->success($conversation->load('messages'), 'Percakapan berhasil dibuat', null, 201);
     }
@@ -71,6 +75,8 @@ class ChatController extends Controller
             'is_read' => false,
             'created_at' => now(),
         ]);
+
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
 
         $conversation->touch();
 

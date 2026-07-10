@@ -14,10 +14,12 @@
         "darkaonline/l5-swagger": "*",
         "kreait/firebase-php": "^8.2",
         "laravel/framework": "^13.8",
+        "laravel/reverb": "^1.0",
         "laravel/socialite": "^5.0",
         "laravel/tinker": "^3.0",
         "lcobucci/jwt": "^5.0",
-        "maatwebsite/excel": "^3.1"
+        "maatwebsite/excel": "^3.1",
+        "pusher/pusher-php-server": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
