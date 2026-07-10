@@ -105,6 +105,8 @@ Route::middleware(['auth.jwt', 'rate.headers:300,1'])->group(function () {
     Route::get('/chat/conversations/{id}/messages', [ChatController::class, 'messages']);
     Route::post('/chat/conversations/{id}/messages', [ChatController::class, 'sendMessage']);
 
+    Route::post('/broadcasting/auth', [\Illuminate\Broadcasting\BroadcastController::class, 'authenticate']);
+
     Route::post('/feedback', [FeedbackController::class, 'store']);
 });
 

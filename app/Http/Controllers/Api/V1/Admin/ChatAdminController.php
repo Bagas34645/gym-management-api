@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Events\MessageSent;
 use App\Http\Controllers\Api\V1\Controller;
+
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
@@ -14,9 +16,13 @@ class ChatAdminController extends Controller
     {
         $perPage = min((int) $request->get('per_page', 20), 100);
         $paginator = ChatConversation::query()
-            ->with(['member:id,name,email', 'admin:id,name'])
+            ->with(['member:id,name,email', 'admin:id,name', 'latestMessage'])
             ->orderByDesc('updated_at')
             ->paginate($perPage);
+
+        $paginator->getCollection()->transform(
+            fn (ChatConversation $conversation) => $conversation->toChatListArray(forAdmin: true),
+        );
 
         return $this->paginated($paginator);
     }
@@ -45,9 +51,11 @@ class ChatAdminController extends Controller
             'created_at' => now(),
         ]);
 
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
+
         $conversation->update(['admin_id' => $request->user()->id]);
         $conversation->touch();
 
-        return $this->success($message, 'Pesan terkirim', null, 201);
+        return $this->success($message->load('sender:id,name'), 'Pesan terkirim', null, 201);
     }
 }

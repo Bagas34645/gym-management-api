@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api\V1\Member;
 
+use App\Events\MessageSent;
 use App\Http\Controllers\Api\V1\Controller;
+
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
@@ -14,9 +16,11 @@ class ChatController extends Controller
     {
         $conversations = ChatConversation::query()
             ->where('member_id', $request->user()->id)
-            ->with('admin:id,name')
+            ->with(['admin:id,name', 'latestMessage'])
             ->orderByDesc('updated_at')
-            ->get();
+            ->get()
+            ->map(fn (ChatConversation $conversation) => $conversation->toChatListArray())
+            ->values();
 
         return $this->success($conversations);
     }
@@ -34,7 +38,7 @@ class ChatController extends Controller
             'status' => 'open',
         ]);
 
-        ChatMessage::query()->create([
+        $message = ChatMessage::query()->create([
             'conversation_id' => $conversation->id,
             'sender_id' => $request->user()->id,
             'message' => $data['message'],
@@ -42,7 +46,16 @@ class ChatController extends Controller
             'created_at' => now(),
         ]);
 
-        return $this->success($conversation->load('messages'), 'Percakapan berhasil dibuat', null, 201);
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
+
+        $conversation->load(['messages.sender:id,name', 'admin:id,name', 'latestMessage']);
+
+        return $this->success(
+            $conversation->toChatListArray(),
+            'Percakapan berhasil dibuat',
+            null,
+            201,
+        );
     }
 
     public function messages(Request $request, string $id): JsonResponse
@@ -72,8 +85,10 @@ class ChatController extends Controller
             'created_at' => now(),
         ]);
 
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
+
         $conversation->touch();
 
-        return $this->success($message, 'Pesan terkirim', null, 201);
+        return $this->success($message->load('sender:id,name'), 'Pesan terkirim', null, 201);
     }
 }
