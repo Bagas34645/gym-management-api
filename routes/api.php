@@ -11,6 +11,10 @@ use App\Http\Controllers\Api\V1\Admin\NotificationAdminController;
 use App\Http\Controllers\Api\V1\Admin\PackageController;
 use App\Http\Controllers\Api\V1\Admin\ReportController;
 use App\Http\Controllers\Api\V1\Admin\TrainerAdminController;
+use App\Http\Controllers\Api\V1\Trainer\DashboardController as TrainerDashboardController;
+use App\Http\Controllers\Api\V1\Trainer\ExerciseController as TrainerExerciseController;
+use App\Http\Controllers\Api\V1\Trainer\MemberSearchController as TrainerMemberSearchController;
+use App\Http\Controllers\Api\V1\Trainer\WorkoutPlanController as TrainerWorkoutPlanController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\FaqController;
 use App\Http\Controllers\Api\V1\KioskCheckinController;
@@ -143,6 +147,7 @@ Route::middleware(['auth.jwt', 'role:admin', 'rate.headers:500,1'])->prefix('adm
 
     Route::get('/trainers', [TrainerAdminController::class, 'index']);
     Route::post('/trainers', [TrainerAdminController::class, 'store']);
+    Route::get('/trainers/{id}', [TrainerAdminController::class, 'show']);
     Route::put('/trainers/{id}', [TrainerAdminController::class, 'update']);
     Route::delete('/trainers/{id}', [TrainerAdminController::class, 'destroy']);
     Route::get('/trainers/{id}/schedule', [TrainerAdminController::class, 'schedule']);
@@ -165,4 +170,15 @@ Route::middleware(['auth.jwt', 'role:admin', 'rate.headers:500,1'])->prefix('adm
     Route::post('/chat/conversations/{id}/messages', [ChatAdminController::class, 'sendMessage']);
 
     Route::get('/feedback', [FeedbackAdminController::class, 'index']);
+});
+
+Route::middleware(['auth.jwt', 'role:trainer', 'rate.headers:300,1'])->prefix('trainer')->group(function () {
+    Route::get('/dashboard/summary', [TrainerDashboardController::class, 'summary']);
+    Route::get('/members/search', [TrainerMemberSearchController::class, 'search']);
+    Route::get('/exercises', [TrainerExerciseController::class, 'index']);
+    Route::get('/workout-plans', [TrainerWorkoutPlanController::class, 'index']);
+    Route::post('/workout-plans', [TrainerWorkoutPlanController::class, 'store']);
+    Route::get('/workout-plans/{id}', [TrainerWorkoutPlanController::class, 'show']);
+    Route::put('/workout-plans/{id}', [TrainerWorkoutPlanController::class, 'update']);
+    Route::delete('/workout-plans/{id}', [TrainerWorkoutPlanController::class, 'destroy']);
 });

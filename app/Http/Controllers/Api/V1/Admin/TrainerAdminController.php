@@ -11,7 +11,6 @@ use App\Models\WorkoutPlan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 class TrainerAdminController extends Controller
 {
@@ -26,8 +25,9 @@ class TrainerAdminController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'unique:users,email'],
-            'phone' => ['nullable', 'regex:/^08\d{8,11}$/', 'unique:users,phone'],
+            'email' => ['required', 'email', 'unique:users,email'],
+            'phone' => ['required', 'regex:/^08\d{8,11}$/', 'unique:users,phone'],
+            'password' => ['required', 'string', 'min:8'],
             'specialization' => ['required', 'string'],
             'experience_years' => ['required', 'integer', 'min:0'],
             'certification' => ['nullable', 'string'],
@@ -37,11 +37,12 @@ class TrainerAdminController extends Controller
 
         $user = User::query()->create([
             'name' => $data['name'],
-            'email' => $data['email'] ?? $this->generateUniqueTrainerEmail(),
-            'phone' => $data['phone'] ?? $this->generateUniqueTrainerPhone(),
-            'password' => Hash::make(Str::random(16)),
-            'role' => 'member',
+            'email' => $data['email'],
+            'phone' => $data['phone'],
+            'password' => Hash::make($data['password']),
+            'role' => 'trainer',
             'status' => 'active',
+            'is_verified' => true,
         ]);
 
         $trainer = Trainer::query()->create([
@@ -57,11 +58,22 @@ class TrainerAdminController extends Controller
         return $this->success($trainer->load('user'), 'Trainer berhasil ditambahkan', null, 201);
     }
 
+    public function show(string $id): JsonResponse
+    {
+        $trainer = Trainer::query()->with('user')->findOrFail($id);
+
+        return $this->success($trainer);
+    }
+
     public function update(Request $request, string $id): JsonResponse
     {
-        $trainer = Trainer::query()->findOrFail($id);
+        $trainer = Trainer::query()->with('user')->findOrFail($id);
+
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
+            'email' => ['sometimes', 'email', 'unique:users,email,'.$trainer->user_id],
+            'phone' => ['sometimes', 'regex:/^08\d{8,11}$/', 'unique:users,phone,'.$trainer->user_id],
+            'password' => ['nullable', 'string', 'min:8'],
             'specialization' => ['sometimes', 'string'],
             'experience_years' => ['sometimes', 'integer'],
             'certification' => ['nullable', 'string'],
@@ -70,19 +82,40 @@ class TrainerAdminController extends Controller
             'status' => ['sometimes', 'in:active,inactive'],
         ]);
 
+        $userData = [];
         if (isset($data['name'])) {
-            $trainer->user()->update(['name' => $data['name']]);
+            $userData['name'] = $data['name'];
             unset($data['name']);
         }
+        if (isset($data['email'])) {
+            $userData['email'] = $data['email'];
+            unset($data['email']);
+        }
+        if (isset($data['phone'])) {
+            $userData['phone'] = $data['phone'];
+            unset($data['phone']);
+        }
+        if (! empty($data['password'])) {
+            $userData['password'] = Hash::make($data['password']);
+        }
+        unset($data['password']);
 
-        $trainer->update($data);
+        if ($userData !== []) {
+            $trainer->user()->update($userData);
+        }
 
-        return $this->success($trainer->load('user'), 'Trainer berhasil diperbarui');
+        if ($data !== []) {
+            $trainer->update($data);
+        }
+
+        return $this->success($trainer->fresh()->load('user'), 'Trainer berhasil diperbarui');
     }
 
     public function destroy(string $id): JsonResponse
     {
-        Trainer::query()->findOrFail($id)->update(['status' => 'inactive']);
+        $trainer = Trainer::query()->with('user')->findOrFail($id);
+        $trainer->update(['status' => 'inactive']);
+        $trainer->user()?->update(['status' => 'inactive']);
 
         return $this->success(null, 'Trainer berhasil dinonaktifkan');
     }
@@ -145,23 +178,5 @@ class TrainerAdminController extends Controller
         ]);
 
         return $this->success($plan, 'Program latihan berhasil dibuat', null, 201);
-    }
-
-    private function generateUniqueTrainerEmail(): string
-    {
-        do {
-            $email = 'trainer-'.Str::uuid().'@trainer.local';
-        } while (User::query()->where('email', $email)->exists());
-
-        return $email;
-    }
-
-    private function generateUniqueTrainerPhone(): string
-    {
-        do {
-            $phone = '08'.str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
-        } while (User::query()->where('phone', $phone)->exists());
-
-        return $phone;
     }
 }

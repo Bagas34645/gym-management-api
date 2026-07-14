@@ -12,27 +12,37 @@ class AddRateLimitHeaders
     {
         $key = $this->resolveKey($request);
         $cacheKey = 'rate_limit:'.$key.':'.$maxAttempts.':'.$decayMinutes;
+        $now = now()->timestamp;
 
-        $data = cache()->get($cacheKey, ['count' => 0, 'reset' => now()->addMinutes($decayMinutes)->timestamp]);
-        $data['count'] = ($data['count'] ?? 0) + 1;
-        $remaining = max(0, $maxAttempts - $data['count']);
+        $data = cache()->get($cacheKey);
 
-        if ($data['count'] === 1) {
-            $data['reset'] = now()->addMinutes($decayMinutes)->timestamp;
+        // Start a fresh window when missing or expired (do not slide TTL on every hit).
+        if (! is_array($data)
+            || ! isset($data['count'], $data['reset'])
+            || $now >= (int) $data['reset']
+        ) {
+            $data = [
+                'count' => 0,
+                'reset' => now()->addMinutes($decayMinutes)->timestamp,
+            ];
         }
 
-        cache()->put($cacheKey, $data, now()->addMinutes($decayMinutes));
+        $data['count'] = (int) $data['count'] + 1;
+        $remaining = max(0, $maxAttempts - $data['count']);
+        $ttlSeconds = max(1, (int) $data['reset'] - $now);
+
+        cache()->put($cacheKey, $data, $ttlSeconds);
 
         if ($data['count'] > $maxAttempts) {
             return response()->json([
                 'success' => false,
-                'message' => 'Terlalu banyak request',
-            ], 429)->withHeaders($this->headers($maxAttempts, 0, $data['reset']));
+                'message' => 'Terlalu banyak request. Coba lagi sebentar.',
+            ], 429)->withHeaders($this->headers($maxAttempts, 0, (int) $data['reset']));
         }
 
         $response = $next($request);
 
-        foreach ($this->headers($maxAttempts, $remaining, $data['reset']) as $name => $value) {
+        foreach ($this->headers($maxAttempts, $remaining, (int) $data['reset']) as $name => $value) {
             $response->headers->set($name, $value);
         }
 

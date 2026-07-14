@@ -17,13 +17,7 @@ class EnsureRole
             return ApiResponse::error('Unauthorized', null, [], 401);
         }
 
-        $allowed = $roles;
-
-        if (in_array('admin', $allowed, true) && $user->role === 'super_admin') {
-            return $next($request);
-        }
-
-        if (! in_array($user->role, $allowed, true)) {
+        if (! in_array($user->role, $roles, true)) {
             return ApiResponse::error('Tidak memiliki hak akses', null, [], 403);
         }
 

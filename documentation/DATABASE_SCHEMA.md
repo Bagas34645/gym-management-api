@@ -8,7 +8,7 @@
 | Table | PK | Notes |
 |-------|-----|-------|
 | `users` | UUID | Soft deletes; role/status enums |
-| `roles` | BIGINT | member, admin, super_admin |
+| `roles` | BIGINT | member, admin |
 | `permissions` | BIGINT | Granular API permissions |
 | `role_permissions` | BIGINT | Junction |
 | `refresh_tokens` | BIGINT | JWT refresh storage |

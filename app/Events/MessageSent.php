@@ -22,6 +22,8 @@ class MessageSent implements ShouldBroadcastNow
     {
         return [
             new PrivateChannel('chat.'.$this->message->conversation_id),
+            // Admin inbox listens here so new member messages appear without selecting a thread first.
+            new PrivateChannel('admin.chat'),
         ];
     }
 

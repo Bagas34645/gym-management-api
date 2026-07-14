@@ -17,6 +17,15 @@ class FeedbackAdminController extends Controller
             ->orderByDesc('created_at')
             ->paginate($perPage);
 
+        $paginator->getCollection()->transform(function (Feedback $feedback) {
+            if ($feedback->is_anonymous) {
+                $feedback->unsetRelation('user');
+                $feedback->setAttribute('user', null);
+            }
+
+            return $feedback;
+        });
+
         return $this->paginated($paginator);
     }
 }

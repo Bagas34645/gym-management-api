@@ -32,16 +32,9 @@ class PermissionSeeder extends Seeder
         }
 
         $adminRole = Role::query()->where('name', 'admin')->first();
-        $superAdminRole = Role::query()->where('name', 'super_admin')->first();
 
         if ($adminRole) {
-            $adminRole->permissions()->syncWithoutDetaching(
-                Permission::query()->whereIn('name', array_slice($permissions, 0, 16))->pluck('id')
-            );
-        }
-
-        if ($superAdminRole) {
-            $superAdminRole->permissions()->sync($permissionIds);
+            $adminRole->permissions()->sync($permissionIds);
         }
     }
 }

@@ -3,7 +3,7 @@
 -- ====================================================
 
 -- User roles and status
-CREATE TYPE user_role AS ENUM ('member', 'admin', 'super_admin');
+CREATE TYPE user_role AS ENUM ('member', 'admin');
 CREATE TYPE user_status AS ENUM ('active', 'inactive', 'suspended');
 
 -- Membership related

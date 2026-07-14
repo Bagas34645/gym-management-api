@@ -84,7 +84,7 @@ it('lets admin reply and assign admin_id', function () {
 
     $conversation->refresh();
     expect($conversation->admin_id)->toBe($admin->id);
-    expect($conversation->status)->toBe('open');
+    expect($conversation->status)->toBe('in_progress');
 
     Event::assertDispatched(MessageSent::class);
 });
@@ -92,7 +92,7 @@ it('lets admin reply and assign admin_id', function () {
 it('authorizes chat channel access rules', function () {
     $member = User::factory()->create(['role' => 'member', 'status' => 'active']);
     $admin = User::factory()->admin()->create(['status' => 'active']);
-    $superAdmin = User::factory()->create(['role' => 'super_admin', 'status' => 'active']);
+    $otherAdmin = User::factory()->admin()->create(['status' => 'active']);
     $stranger = User::factory()->create(['role' => 'member', 'status' => 'active']);
 
     $conversation = ChatConversation::factory()->create([
@@ -106,13 +106,13 @@ it('authorizes chat channel access rules', function () {
         return $conversationModel && (
             (string) $user->id === (string) $conversationModel->member_id ||
             (string) $user->id === (string) $conversationModel->admin_id ||
-            in_array($user->role, ['admin', 'super_admin'], true)
+            $user->role === 'admin'
         );
     };
 
     expect($authorize($member, $conversation->id))->toBeTrue();
     expect($authorize($admin, $conversation->id))->toBeTrue();
-    expect($authorize($superAdmin, $conversation->id))->toBeTrue();
+    expect($authorize($otherAdmin, $conversation->id))->toBeTrue();
     expect($authorize($stranger, $conversation->id))->toBeFalse();
 });
 
@@ -130,4 +130,7 @@ it('broadcasts message.sent event name from MessageSent', function () {
 
     expect($event->broadcastAs())->toBe('message.sent');
     expect($event->broadcastWith()['message'])->toBe('Test broadcast');
+    expect(collect($event->broadcastOn())->map(fn ($c) => $c->name)->all())
+        ->toContain('private-chat.'.$conversation->id)
+        ->toContain('private-admin.chat');
 });

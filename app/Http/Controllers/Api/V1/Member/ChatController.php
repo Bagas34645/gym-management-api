@@ -4,11 +4,11 @@ namespace App\Http\Controllers\Api\V1\Member;
 
 use App\Events\MessageSent;
 use App\Http\Controllers\Api\V1\Controller;
-
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ChatController extends Controller
 {
@@ -16,13 +16,17 @@ class ChatController extends Controller
     {
         $conversations = ChatConversation::query()
             ->where('member_id', $request->user()->id)
-            ->with(['admin:id,name', 'latestMessage'])
+            ->with(['admin:id,name'])
             ->orderByDesc('updated_at')
-            ->get()
+            ->get();
+
+        ChatConversation::attachLatestMessages($conversations);
+
+        $payload = $conversations
             ->map(fn (ChatConversation $conversation) => $conversation->toChatListArray())
             ->values();
 
-        return $this->success($conversations);
+        return $this->success($payload);
     }
 
     public function storeConversation(Request $request): JsonResponse
@@ -46,9 +50,10 @@ class ChatController extends Controller
             'created_at' => now(),
         ]);
 
-        broadcast(new MessageSent($message->load('sender')))->toOthers();
+        $this->safeBroadcast($message);
 
-        $conversation->load(['messages.sender:id,name', 'admin:id,name', 'latestMessage']);
+        $conversation->load(['admin:id,name']);
+        $conversation->setRelation('latestMessage', $message);
 
         return $this->success(
             $conversation->toChatListArray(),
@@ -85,10 +90,22 @@ class ChatController extends Controller
             'created_at' => now(),
         ]);
 
-        broadcast(new MessageSent($message->load('sender')))->toOthers();
+        $this->safeBroadcast($message);
 
         $conversation->touch();
 
         return $this->success($message->load('sender:id,name'), 'Pesan terkirim', null, 201);
+    }
+
+    private function safeBroadcast(ChatMessage $message): void
+    {
+        try {
+            broadcast(new MessageSent($message->loadMissing('sender')))->toOthers();
+        } catch (\Throwable $e) {
+            Log::warning('Chat broadcast failed: '.$e->getMessage(), [
+                'message_id' => $message->id,
+                'conversation_id' => $message->conversation_id,
+            ]);
+        }
     }
 }

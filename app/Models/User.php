@@ -135,7 +135,7 @@ class User extends Authenticatable
 
     public function scopeAdmins($query)
     {
-        return $query->whereIn('role', ['admin', 'super_admin']);
+        return $query->where('role', 'admin');
     }
 
     public function scopeMembers($query)

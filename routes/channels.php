@@ -12,6 +12,10 @@ Broadcast::channel('chat.{conversationId}', function ($user, $conversationId) {
     return $conversation && (
         (string) $user->id === (string) $conversation->member_id ||
         (string) $user->id === (string) $conversation->admin_id ||
-        in_array($user->role, ['admin', 'super_admin'], true)
+        $user->role === 'admin'
     );
+});
+
+Broadcast::channel('admin.chat', function ($user) {
+    return $user->role === 'admin';
 });

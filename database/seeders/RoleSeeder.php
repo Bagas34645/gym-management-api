@@ -12,7 +12,6 @@ class RoleSeeder extends Seeder
         $roles = [
             ['name' => 'member', 'description' => 'Gym member with mobile app access'],
             ['name' => 'admin', 'description' => 'Gym administrator with dashboard access'],
-            ['name' => 'super_admin', 'description' => 'System administrator with full access'],
         ];
 
         foreach ($roles as $role) {
