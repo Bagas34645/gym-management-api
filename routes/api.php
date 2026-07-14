@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\Admin\NotificationAdminController;
 use App\Http\Controllers\Api\V1\Admin\PackageController;
 use App\Http\Controllers\Api\V1\Admin\ReportController;
 use App\Http\Controllers\Api\V1\Admin\TrainerAdminController;
+use App\Http\Controllers\Api\V1\Admin\WeatherAnalyticsController;
 use App\Http\Controllers\Api\V1\Trainer\DashboardController as TrainerDashboardController;
 use App\Http\Controllers\Api\V1\Trainer\ExerciseController as TrainerExerciseController;
 use App\Http\Controllers\Api\V1\Trainer\MemberSearchController as TrainerMemberSearchController;
@@ -157,6 +158,11 @@ Route::middleware(['auth.jwt', 'role:admin', 'rate.headers:500,1'])->prefix('adm
 
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+    Route::get('/dashboard/weather', [WeatherAnalyticsController::class, 'index']);
+    Route::get('/dashboard/weather/chart', [WeatherAnalyticsController::class, 'chart']);
+    Route::get('/dashboard/weather-summary', [WeatherAnalyticsController::class, 'summary']);
+    Route::get('/dashboard/weather-attendance', [WeatherAnalyticsController::class, 'attendance']);
+    Route::get('/dashboard/weather-distribution', [WeatherAnalyticsController::class, 'distribution']);
 
     Route::get('/reports/members', [ReportController::class, 'members']);
     Route::get('/reports/attendance', [ReportController::class, 'attendance']);
