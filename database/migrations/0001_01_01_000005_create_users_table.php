@@ -14,7 +14,7 @@ return new class extends Migration
             $table->string('email', 255)->unique();
             $table->string('phone', 20)->unique();
             $table->string('password', 255);
-            $table->enum('role', ['member', 'admin', 'super_admin'])->default('member');
+            $table->enum('role', ['member', 'admin'])->default('member');
             $table->enum('status', ['active', 'inactive', 'suspended'])->default('active');
             $table->string('profile_photo_url', 500)->nullable();
             $table->unsignedSmallInteger('age')->nullable();

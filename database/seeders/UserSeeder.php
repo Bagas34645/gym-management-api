@@ -12,18 +12,6 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        $superAdmin = User::query()->firstOrCreate(
-            ['email' => 'superadmin@coregym.id'],
-            [
-                'name' => 'Super Admin',
-                'phone' => '08100000001',
-                'password' => Hash::make('password'),
-                'role' => 'super_admin',
-                'status' => 'active',
-                'is_verified' => true,
-            ]
-        );
-
         $admin = User::query()->firstOrCreate(
             ['email' => 'admin@coregym.id'],
             [
@@ -48,13 +36,38 @@ class UserSeeder extends Seeder
             ]
         );
 
+        $demoTrainer = User::query()->firstOrCreate(
+            ['email' => 'trainer@gym.local'],
+            [
+                'name' => 'Demo Trainer',
+                'phone' => '08100000099',
+                'password' => Hash::make('password'),
+                'role' => 'trainer',
+                'status' => 'active',
+                'is_verified' => true,
+            ]
+        );
+        $demoTrainer->update(['role' => 'trainer']);
+        Trainer::query()->firstOrCreate(
+            ['user_id' => $demoTrainer->id],
+            [
+                'specialization' => 'Strength',
+                'experience_years' => 5,
+                'certification' => 'ACE Certified',
+                'bio' => 'Demo trainer account for portal testing.',
+                'hourly_rate' => 150000,
+                'status' => 'active',
+            ]
+        );
+
         $trainerUsers = User::factory()->count(4)->create([
-            'role' => 'member',
+            'role' => 'trainer',
             'status' => 'active',
+            'is_verified' => true,
         ]);
 
         foreach ($trainerUsers as $index => $user) {
-            $user->update(['role' => 'member']);
+            $user->update(['role' => 'trainer']);
             Trainer::query()->firstOrCreate(
                 ['user_id' => $user->id],
                 [
@@ -82,6 +95,6 @@ class UserSeeder extends Seeder
             );
         }
 
-        unset($superAdmin, $admin);
+        unset($admin);
     }
 }

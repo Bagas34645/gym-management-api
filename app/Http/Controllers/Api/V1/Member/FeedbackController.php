@@ -25,12 +25,13 @@ class FeedbackController extends Controller
             'message' => $data['message'] ?? null,
             'is_anonymous' => $data['is_anonymous'] ?? false,
             'status' => 'new',
+            'submitted_at' => now(),
         ]);
 
         return $this->success([
             'feedback_id' => $feedback->id,
             'rating' => $feedback->rating,
-            'submitted_at' => $feedback->created_at->toIso8601String(),
+            'submitted_at' => $feedback->submitted_at->toIso8601String(),
         ], 'Terima kasih atas feedback Anda', null, 201);
     }
 }

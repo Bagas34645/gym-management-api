@@ -59,6 +59,7 @@ class WorkoutPlan extends Model
     {
         return $this->belongsToMany(Exercise::class, 'workout_plan_exercises')
             ->withPivot(['order', 'sets', 'reps', 'weight_kg', 'rest_seconds', 'notes'])
-            ->withTimestamps();
+            ->withTimestamps()
+            ->orderByPivot('order');
     }
 }
