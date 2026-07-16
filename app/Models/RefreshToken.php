@@ -11,7 +11,17 @@ class RefreshToken extends Model
 
     const UPDATED_AT = null;
 
-    protected $fillable = ['user_id', 'token', 'expires_at', 'revoked_at'];
+    protected $fillable = [
+        'user_id',
+        'token',
+        'expires_at',
+        'revoked_at',
+        'ip_address',
+        'user_agent',
+        'platform',
+        'browser',
+        'last_used_at',
+    ];
 
     protected function casts(): array
     {
@@ -19,6 +29,7 @@ class RefreshToken extends Model
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
             'created_at' => 'datetime',
+            'last_used_at' => 'datetime',
         ];
     }
 

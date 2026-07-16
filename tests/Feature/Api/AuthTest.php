@@ -132,7 +132,7 @@ it('returns profile for authenticated user', function () {
 
 it('refreshes access token', function () {
     $user = User::factory()->create(['role' => 'member', 'status' => 'active']);
-    $refresh = app(RefreshTokenService::class)->issue($user);
+    $refresh = app(RefreshTokenService::class)->issue($user)['token'];
 
     $response = $this->postJson('/v1/auth/refresh', ['refresh_token' => $refresh]);
 
@@ -152,4 +152,141 @@ it('denies admin routes for members', function () {
         ->getJson('/v1/admin/dashboard/summary');
 
     $response->assertStatus(403);
+});
+
+it('lists login sessions and marks the current one', function () {
+    $user = User::factory()->create([
+        'role' => 'member',
+        'status' => 'active',
+        'password' => 'password123',
+    ]);
+
+    $login = $this->withHeaders([
+        'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+    ])->postJson('/v1/auth/login', [
+        'identifier' => $user->email,
+        'password' => 'password123',
+    ]);
+
+    $login->assertOk();
+    $access = $login->json('data.access_token');
+    $refresh = $login->json('data.refresh_token');
+
+    app(RefreshTokenService::class)->issue($user, [
+        'ip_address' => '10.0.0.2',
+        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0) Chrome/119.0.0.0',
+    ]);
+
+    $response = $this->withHeader('Authorization', 'Bearer '.$access)
+        ->getJson('/v1/auth/sessions?current_refresh_token='.urlencode($refresh));
+
+    $response->assertOk()
+        ->assertJsonPath('success', true)
+        ->assertJsonCount(2, 'data');
+
+    $sessions = collect($response->json('data'));
+    expect($sessions->where('is_current', true))->toHaveCount(1);
+    expect($sessions->firstWhere('is_current', true)['status'])->toBe('current');
+    expect($sessions->firstWhere('is_current', true)['platform'])->toBe('Linux');
+    expect($sessions->firstWhere('is_current', true)['browser'])->toBe('Chrome');
+});
+
+it('revokes another login session by id', function () {
+    $user = User::factory()->create([
+        'role' => 'member',
+        'status' => 'active',
+        'password' => 'password123',
+    ]);
+
+    $login = $this->postJson('/v1/auth/login', [
+        'identifier' => $user->email,
+        'password' => 'password123',
+    ])->assertOk();
+
+    $access = $login->json('data.access_token');
+    $refresh = $login->json('data.refresh_token');
+
+    $otherPlain = app(RefreshTokenService::class)->issue($user, [
+        'ip_address' => '10.0.0.99',
+        'user_agent' => 'Mozilla/5.0 (Windows NT 10.0) Chrome/119.0.0.0',
+    ])['token'];
+
+    $otherId = \App\Models\RefreshToken::query()
+        ->where('token', hash('sha256', $otherPlain))
+        ->value('id');
+
+    $this->withHeader('Authorization', 'Bearer '.$access)
+        ->deleteJson('/v1/auth/sessions/'.$otherId, [
+            'current_refresh_token' => $refresh,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.was_current', false);
+
+    $this->assertDatabaseHas('refresh_tokens', [
+        'id' => $otherId,
+    ]);
+
+    expect(\App\Models\RefreshToken::query()->find($otherId)->revoked_at)->not->toBeNull();
+});
+
+it('rejects revoking a session owned by another user', function () {
+    $user = User::factory()->create([
+        'role' => 'member',
+        'status' => 'active',
+        'password' => 'password123',
+    ]);
+    $other = User::factory()->create([
+        'role' => 'member',
+        'status' => 'active',
+        'password' => 'password123',
+    ]);
+
+    $login = $this->postJson('/v1/auth/login', [
+        'identifier' => $user->email,
+        'password' => 'password123',
+    ])->assertOk();
+
+    $otherPlain = app(RefreshTokenService::class)->issue($other)['token'];
+    $otherId = \App\Models\RefreshToken::query()
+        ->where('token', hash('sha256', $otherPlain))
+        ->value('id');
+
+    $this->withHeader('Authorization', 'Bearer '.$login->json('data.access_token'))
+        ->deleteJson('/v1/auth/sessions/'.$otherId)
+        ->assertStatus(404);
+});
+
+it('rejects access token after its session is revoked', function () {
+    $user = User::factory()->create([
+        'role' => 'member',
+        'status' => 'active',
+        'password' => 'password123',
+    ]);
+
+    $login = $this->postJson('/v1/auth/login', [
+        'identifier' => $user->email,
+        'password' => 'password123',
+    ])->assertOk();
+
+    $access = $login->json('data.access_token');
+    $refresh = $login->json('data.refresh_token');
+
+    $sessionId = \App\Models\RefreshToken::query()
+        ->where('token', hash('sha256', $refresh))
+        ->value('id');
+
+    $this->withHeader('Authorization', 'Bearer '.$access)
+        ->getJson('/v1/auth/me')
+        ->assertOk();
+
+    $this->withHeader('Authorization', 'Bearer '.$access)
+        ->deleteJson('/v1/auth/sessions/'.$sessionId, [
+            'current_refresh_token' => $refresh,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.was_current', true);
+
+    $this->withHeader('Authorization', 'Bearer '.$access)
+        ->getJson('/v1/auth/me')
+        ->assertStatus(401);
 });

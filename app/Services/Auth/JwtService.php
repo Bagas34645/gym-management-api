@@ -4,13 +4,14 @@ namespace App\Services\Auth;
 
 use App\Enums\ErrorCode;
 use App\Exceptions\ApiException;
+use App\Models\RefreshToken;
 use App\Models\User;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 
 class JwtService
 {
-    public function createAccessToken(User $user): string
+    public function createAccessToken(User $user, int $sessionId): string
     {
         $now = time();
         $payload = [
@@ -20,6 +21,7 @@ class JwtService
             'sub' => (string) $user->id,
             'role' => $user->role,
             'type' => 'access',
+            'sid' => $sessionId,
         ];
 
         return JWT::encode($payload, $this->privateKey(), 'RS256');
@@ -43,7 +45,26 @@ class JwtService
             throw new ApiException('Token tidak valid atau sudah kadaluarsa', ErrorCode::AuthInvalidToken, 401);
         }
 
+        $this->assertSessionActive((string) $user->id, $decoded->sid ?? null);
+
         return $user;
+    }
+
+    private function assertSessionActive(string $userId, mixed $sessionId): void
+    {
+        if ($sessionId === null || $sessionId === '') {
+            throw new ApiException('Token tidak valid atau sudah kadaluarsa', ErrorCode::AuthInvalidToken, 401);
+        }
+
+        $active = RefreshToken::query()
+            ->where('id', (int) $sessionId)
+            ->where('user_id', $userId)
+            ->valid()
+            ->exists();
+
+        if (! $active) {
+            throw new ApiException('Token tidak valid atau sudah kadaluarsa', ErrorCode::AuthInvalidToken, 401);
+        }
     }
 
     private function privateKey(): string

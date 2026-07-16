@@ -125,10 +125,11 @@ class AuthController extends Controller
         $user->update(['last_login_at' => now()]);
 
         $membershipStatus = $user->activeMembership ? 'active' : 'inactive';
+        $issued = $this->refreshTokens->issue($user, $this->sessionMeta($request));
 
         return $this->success([
-            'access_token' => $this->jwt->createAccessToken($user),
-            'refresh_token' => $this->refreshTokens->issue($user),
+            'access_token' => $this->jwt->createAccessToken($user, $issued['id']),
+            'refresh_token' => $issued['token'],
             'token_type' => 'Bearer',
             'expires_in' => config('jwt.access_ttl'),
             'member' => [
@@ -183,10 +184,11 @@ class AuthController extends Controller
         }
 
         $user->update(['last_login_at' => now(), 'is_verified' => true]);
+        $issued = $this->refreshTokens->issue($user, $this->sessionMeta($request));
 
         return $this->success([
-            'access_token' => $this->jwt->createAccessToken($user),
-            'refresh_token' => $this->refreshTokens->issue($user),
+            'access_token' => $this->jwt->createAccessToken($user, $issued['id']),
+            'refresh_token' => $issued['token'],
             'token_type' => 'Bearer',
             'expires_in' => config('jwt.access_ttl'),
             'member' => [
@@ -210,7 +212,7 @@ class AuthController extends Controller
     public function refresh(Request $request): JsonResponse
     {
         $data = $request->validate(['refresh_token' => ['required', 'string']]);
-        $tokens = $this->refreshTokens->rotate($data['refresh_token']);
+        $tokens = $this->refreshTokens->rotate($data['refresh_token'], $this->sessionMeta($request));
 
         return $this->success([
             'access_token' => $tokens['access_token'],
@@ -218,6 +220,31 @@ class AuthController extends Controller
             'token_type' => $tokens['token_type'],
             'expires_in' => $tokens['expires_in'],
         ]);
+    }
+
+    public function sessions(Request $request): JsonResponse
+    {
+        $current = $request->query('current_refresh_token')
+            ?? $request->input('current_refresh_token');
+
+        $sessions = $this->refreshTokens
+            ->listForUser($request->user(), is_string($current) ? $current : null)
+            ->values()
+            ->all();
+
+        return $this->success($sessions);
+    }
+
+    public function destroySession(Request $request, int $id): JsonResponse
+    {
+        $current = $request->input('current_refresh_token');
+        $result = $this->refreshTokens->revokeById(
+            $request->user(),
+            $id,
+            is_string($current) ? $current : null,
+        );
+
+        return $this->success($result, 'Sesi berhasil dihapus');
     }
 
     public function forgotPassword(Request $request): JsonResponse
@@ -389,6 +416,24 @@ class AuthController extends Controller
             'weight_kg' => $user->weight_kg,
             'fitness_goal' => $user->fitness_goal,
             'membership_status' => $user->activeMembership ? 'active' : 'inactive',
+        ];
+    }
+
+    /**
+     * @return array{ip_address: ?string, user_agent: ?string}
+     */
+    private function sessionMeta(Request $request): array
+    {
+        $clientIp = $request->header('X-Client-Ip')
+            ?: $request->header('X-Real-Ip')
+            ?: $request->ip();
+
+        $clientUa = $request->header('X-Client-User-Agent')
+            ?: $request->userAgent();
+
+        return [
+            'ip_address' => is_string($clientIp) && $clientIp !== '' ? $clientIp : null,
+            'user_agent' => is_string($clientUa) && $clientUa !== '' ? $clientUa : null,
         ];
     }
 }

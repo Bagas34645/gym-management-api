@@ -65,6 +65,8 @@ Route::middleware(['auth.jwt', 'rate.headers:300,1'])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::put('/auth/me', [AuthController::class, 'updateMe']);
     Route::put('/auth/me/password', [AuthController::class, 'changePassword']);
+    Route::get('/auth/sessions', [AuthController::class, 'sessions']);
+    Route::delete('/auth/sessions/{id}', [AuthController::class, 'destroySession']);
 
     Route::get('/memberships/active', [MembershipController::class, 'active']);
     Route::post('/memberships/renew', [MembershipController::class, 'renew']);
